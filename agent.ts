@@ -773,7 +773,7 @@ Rules:
             authorName: z
               .string()
               .min(1)
-              .describe("Author name to analyze (case-sensitive match)."),
+              .describe("Author name to analyze (case-insensitive match)."),
             limit: z
               .number()
               .int()
@@ -783,12 +783,46 @@ Rules:
               .describe("Max posts to analyze. Default 50."),
           }),
           execute: async ({ authorName, limit }) => {
-            const query = /* GraphQL */ `
-              query AuthorExpertise($authorName: String!, $first: IntType) {
+            // Step 1: resolve author IDs by name (case-insensitive)
+            const authorsQuery = /* GraphQL */ `
+              query FindAuthorIdsForExpertise($authorName: String!) {
+                allAuthors(
+                  filter: {
+                    name: {
+                      matches: { pattern: $authorName, caseSensitive: false }
+                    }
+                  }
+                ) {
+                  id
+                  name
+                }
+              }
+            `;
+
+            const authors = await datoQuery<{
+              allAuthors: Array<{ id: string; name: string | null }>;
+            }>(authorsQuery, { authorName });
+
+            const authorIds = authors.allAuthors?.map((a) => a.id) ?? [];
+            if (!authorIds.length) {
+              return {
+                authorName,
+                postCount: 0,
+                expertise: [],
+                recentPosts: [],
+              };
+            }
+
+            // Step 2: fetch blogs linked to any of these authors
+            const blogsQuery = /* GraphQL */ `
+              query AuthorExpertiseBlogs(
+                $authorIds: [ItemId]
+                $first: IntType
+              ) {
                 allBlogs(
                   orderBy: _createdAt_DESC
                   first: $first
-                  filter: { authors: { name: { eq: $authorName } } }
+                  filter: { authors: { anyIn: $authorIds } }
                 ) {
                   id
                   title
@@ -809,7 +843,7 @@ Rules:
                 _status: string;
                 slug: string | null;
               }>;
-            }>(query, { authorName, first: limit });
+            }>(blogsQuery, { authorIds, first: limit });
 
             if (!data.allBlogs.length) {
               return {
@@ -874,6 +908,7 @@ Rules:
                 .replace(/[^a-z0-9\s]/g, " ")
                 .split(/\s+/)
                 .filter((word) => word.length > 2 && !stopWords.has(word));
+
               for (const word of text) {
                 keywords.set(word, (keywords.get(word) || 0) + 1);
               }
