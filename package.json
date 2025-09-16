@@ -8,5 +8,8 @@
     "blink": "^0.1.22",
     "esbuild": "^0.25.9",
     "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.0"
   }
 }
