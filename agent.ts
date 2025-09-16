@@ -222,7 +222,7 @@ Rules:
           execute: async ({ author, first }) => {
             // Step 1: find author IDs matching the provided name (case-insensitive)
             const authorsQuery = /* GraphQL */ `
-              query FindAuthorIds($author: String) {
+              query FindAuthorIds($author: String!) {
                 allAuthors(
                   filter: {
                     name: {
@@ -301,7 +301,7 @@ Rules:
           }),
           execute: async ({ q, first }) => {
             const query = /* GraphQL */ `
-              query FindByDescription($q: String, $first: IntType) {
+              query FindByDescription($q: String!, $first: IntType) {
                 allBlogs(
                   orderBy: _createdAt_DESC
                   first: $first
