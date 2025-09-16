@@ -665,23 +665,14 @@ Rules:
               hasGap: boolean;
             }> = [];
             for (const keyword of keywords) {
-              const query = /* GraphQL */ `
-                query CheckCoverage($keyword: String!, $since: DateTime!) {
+              const queryTitle = /* GraphQL */ `
+                query CheckCoverageTitle($keyword: String!, $since: DateTime!) {
                   allBlogs(
                     filter: {
                       _createdAt: { gte: $since }
-                      _or: [
-                        {
-                          title: {
-                            matches: { pattern: $keyword, caseSensitive: false }
-                          }
-                        }
-                        {
-                          description: {
-                            matches: { pattern: $keyword, caseSensitive: false }
-                          }
-                        }
-                      ]
+                      title: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
                     }
                     orderBy: _createdAt_DESC
                   ) {
@@ -694,21 +685,70 @@ Rules:
                 }
               `;
 
-              const data = await datoQuery<{
-                allBlogs: Array<{
+              const queryDesc = /* GraphQL */ `
+                query CheckCoverageDesc($keyword: String!, $since: DateTime!) {
+                  allBlogs(
+                    filter: {
+                      _createdAt: { gte: $since }
+                      description: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                    orderBy: _createdAt_DESC
+                  ) {
+                    id
+                    title
+                    _createdAt
+                    _status
+                    slug
+                  }
+                }
+              `;
+
+              const [titleData, descData] = await Promise.all([
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    slug: string | null;
+                  }>;
+                }>(queryTitle, { keyword, since: cutoffISO }),
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    slug: string | null;
+                  }>;
+                }>(queryDesc, { keyword, since: cutoffISO }),
+              ]);
+
+              // Dedupe by id
+              const byId = new Map<
+                string,
+                {
                   id: string;
                   title: string | null;
                   _createdAt: string;
                   _status: string;
                   slug: string | null;
-                }>;
-              }>(query, { keyword, since: cutoffISO });
+                }
+              >();
+              for (const p of [...titleData.allBlogs, ...descData.allBlogs]) {
+                byId.set(p.id, p);
+              }
+              const merged = Array.from(byId.values()).sort((a, b) =>
+                a._createdAt < b._createdAt ? 1 : -1,
+              );
 
               gaps.push({
                 keyword,
-                existingPosts: data.allBlogs.length,
-                recentPosts: data.allBlogs.slice(0, 3),
-                hasGap: data.allBlogs.length === 0,
+                existingPosts: merged.length,
+                recentPosts: merged.slice(0, 3),
+                hasGap: merged.length === 0,
               });
             }
 
@@ -976,24 +1016,15 @@ Rules:
             }> = [];
 
             for (const keyword of keywords) {
-              const query = /* GraphQL */ `
-                query SimilarPosts($keyword: String!, $first: IntType) {
+              const queryTitle = /* GraphQL */ `
+                query SimilarPostsTitle($keyword: String!, $first: IntType) {
                   allBlogs(
                     orderBy: _createdAt_DESC
                     first: $first
                     filter: {
-                      _or: [
-                        {
-                          title: {
-                            matches: { pattern: $keyword, caseSensitive: false }
-                          }
-                        }
-                        {
-                          description: {
-                            matches: { pattern: $keyword, caseSensitive: false }
-                          }
-                        }
-                      ]
+                      title: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
                     }
                   ) {
                     id
@@ -1009,8 +1040,59 @@ Rules:
                 }
               `;
 
-              const data = await datoQuery<{
-                allBlogs: Array<{
+              const queryDesc = /* GraphQL */ `
+                query SimilarPostsDesc($keyword: String!, $first: IntType) {
+                  allBlogs(
+                    orderBy: _createdAt_DESC
+                    first: $first
+                    filter: {
+                      description: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                  ) {
+                    id
+                    title
+                    description
+                    slug
+                    _createdAt
+                    _status
+                    authors {
+                      name
+                    }
+                  }
+                }
+              `;
+
+              const [titleData, descData] = await Promise.all([
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    description: string | null;
+                    slug: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    authors?: Array<{ name: string | null }>;
+                  }>;
+                }>(queryTitle, { keyword, first: limit }),
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    description: string | null;
+                    slug: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    authors?: Array<{ name: string | null }>;
+                  }>;
+                }>(queryDesc, { keyword, first: limit }),
+              ]);
+
+              // Dedupe by id and sort
+              const byId = new Map<
+                string,
+                {
                   id: string;
                   title: string | null;
                   description: string | null;
@@ -1018,13 +1100,19 @@ Rules:
                   _createdAt: string;
                   _status: string;
                   authors?: Array<{ name: string | null }>;
-                }>;
-              }>(query, { keyword, first: limit });
+                }
+              >();
+              for (const p of [...titleData.allBlogs, ...descData.allBlogs]) {
+                byId.set(p.id, p);
+              }
+              const merged = Array.from(byId.values()).sort((a, b) =>
+                a._createdAt < b._createdAt ? 1 : -1,
+              );
 
               results.push({
                 keyword,
-                matchingPosts: data.allBlogs.length,
-                posts: data.allBlogs.map((p) => ({
+                matchingPosts: merged.length,
+                posts: merged.slice(0, limit).map((p) => ({
                   title: p.title,
                   description: p.description,
                   slug: p.slug,
