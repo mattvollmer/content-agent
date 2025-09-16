@@ -652,7 +652,18 @@ Rules:
             cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
             const cutoffISO = cutoffDate.toISOString();
 
-            const gaps = [];
+            const gaps: Array<{
+              keyword: string;
+              existingPosts: number;
+              recentPosts: Array<{
+                id: string;
+                title: string | null;
+                _createdAt: string;
+                _status: string;
+                slug: string | null;
+              }>;
+              hasGap: boolean;
+            }> = [];
             for (const keyword of keywords) {
               const query = /* GraphQL */ `
                 query CheckCoverage($keyword: String!, $since: DateTime!) {
@@ -866,7 +877,10 @@ Rules:
           }),
           execute: async ({ releaseData }) => {
             const themes = new Map<string, number>();
-            const contentIdeas = [];
+            const contentIdeas: Array<{
+              release: string;
+              suggestedTopics: string[];
+            }> = [];
 
             for (const release of releaseData) {
               const text = `${release.name || ""} ${release.tag || ""} ${
@@ -948,7 +962,18 @@ Rules:
               .describe("Max posts to return per keyword. Default 20."),
           }),
           execute: async ({ keywords, limit }) => {
-            const results = [];
+            const results: Array<{
+              keyword: string;
+              matchingPosts: number;
+              posts: Array<{
+                title: string | null;
+                description: string | null;
+                slug: string | null;
+                createdAt: string;
+                status: string;
+                authors: string[];
+              }>;
+            }> = [];
 
             for (const keyword of keywords) {
               const query = /* GraphQL */ `
@@ -1005,7 +1030,10 @@ Rules:
                   slug: p.slug,
                   createdAt: p._createdAt,
                   status: p._status,
-                  authors: p.authors?.map((a) => a.name).filter(Boolean) || [],
+                  authors:
+                    p.authors
+                      ?.map((a) => a.name)
+                      .filter((name): name is string => Boolean(name)) || [],
                 })),
               });
             }
