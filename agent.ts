@@ -46,7 +46,7 @@ export default blink.agent({
   async sendMessages({ messages }) {
     return streamText({
       model: "anthropic/claude-sonnet-4",
-      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts.
+      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, and correlate recent GitHub releases to potential authors.
 
 Rules:
 - When listing or summarizing posts, only fetch lightweight metadata (id, title, _firstPublishedAt, description, slug, _status, _createdAt) and the total count.
@@ -55,6 +55,7 @@ Rules:
 - Prefer the most recent content first.
 - If the user asks for specific posts (by slug or id), retrieve only what is necessary.
 - For targeted searches, use the author/topic search tools without fetching content.
+- For GitHub releases, default to metadata only (exclude body) unless explicitly requested to include it.
 - If an operation fails, return the error message without guessing.
 `,
       messages: convertToModelMessages(messages),
@@ -350,6 +351,184 @@ Rules:
             }>(query, { q, first });
 
             return data.allBlogs;
+          },
+        }),
+
+        get_github_releases: tool({
+          description:
+            "Fetch the last N releases for a repository in the coder organization. Defaults to metadata only (no body).",
+          inputSchema: z.object({
+            repo: z
+              .string()
+              .min(1)
+              .describe(
+                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'.",
+              ),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(10)
+              .describe("Max number of releases to return. Default 10."),
+            includePrereleases: z
+              .boolean()
+              .default(false)
+              .describe("Include prereleases. Default false."),
+            includeDrafts: z
+              .boolean()
+              .default(false)
+              .describe(
+                "Include draft releases (requires token with access). Default false.",
+              ),
+            includeBody: z
+              .boolean()
+              .default(false)
+              .describe(
+                "Include release body text. Default false to keep payload small.",
+              ),
+          }),
+          execute: async ({
+            repo,
+            limit,
+            includePrereleases,
+            includeDrafts,
+            includeBody,
+          }) => {
+            const token = process.env.GITHUB_TOKEN;
+            if (!token) {
+              throw new Error(
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
+              );
+            }
+
+            const url = new URL(
+              `https://api.github.com/repos/coder/${encodeURIComponent(
+                repo,
+              )}/releases`,
+            );
+            url.searchParams.set("per_page", String(Math.min(limit, 100)));
+
+            const res = await fetch(url.toString(), {
+              headers: {
+                Accept: "application/vnd.github+json",
+                Authorization: `Bearer ${token}`,
+                "X-GitHub-Api-Version": "2022-11-28",
+              },
+            });
+            const json = (await res.json()) as Array<{
+              name: string | null;
+              tag_name: string | null;
+              draft: boolean;
+              prerelease: boolean;
+              published_at: string | null;
+              html_url: string;
+              body?: string | null;
+            }>;
+            if (!res.ok) {
+              throw new Error(
+                `GitHub releases error: ${res.status} ${res.statusText}`,
+              );
+            }
+
+            const filtered = json
+              .filter((r) => (includePrereleases ? true : !r.prerelease))
+              .filter((r) => (includeDrafts ? true : !r.draft))
+              .slice(0, limit)
+              .map((r) => ({
+                name: r.name,
+                tag: r.tag_name,
+                draft: r.draft,
+                prerelease: r.prerelease,
+                publishedAt: r.published_at,
+                url: r.html_url,
+                body: includeBody ? (r.body ?? null) : undefined,
+              }));
+
+            return filtered;
+          },
+        }),
+
+        rank_authors_for_keywords: tool({
+          description:
+            "Rank DatoCMS blog authors by how often they appear on posts matching the given keywords (in description). Metadata only.",
+          inputSchema: z.object({
+            q: z
+              .string()
+              .min(1)
+              .describe(
+                "Keyword(s) to search in descriptions, case-insensitive.",
+              ),
+            first: z
+              .number()
+              .int()
+              .min(1)
+              .max(200)
+              .default(100)
+              .describe(
+                "How many posts to consider for ranking (most recent first).",
+              ),
+          }),
+          execute: async ({ q, first }) => {
+            const query = /* GraphQL */ `
+              query RankAuthors($q: String!, $first: IntType) {
+                allBlogs(
+                  orderBy: _createdAt_DESC
+                  first: $first
+                  filter: {
+                    description: {
+                      matches: { pattern: $q, caseSensitive: false }
+                    }
+                  }
+                ) {
+                  id
+                  _createdAt
+                  authors {
+                    name
+                  }
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              allBlogs: Array<{
+                id: string;
+                _createdAt: string;
+                authors?: Array<{ name: string | null }>;
+              }>;
+            }>(query, { q, first });
+
+            const counts = new Map<
+              string,
+              { count: number; latestAt: string }
+            >();
+            for (const post of data.allBlogs || []) {
+              const when = post._createdAt;
+              for (const a of post.authors || []) {
+                const name = (a?.name || "").trim();
+                if (!name) continue;
+                const prev = counts.get(name);
+                if (prev) {
+                  counts.set(name, {
+                    count: prev.count + 1,
+                    latestAt: prev.latestAt > when ? prev.latestAt : when,
+                  });
+                } else {
+                  counts.set(name, { count: 1, latestAt: when });
+                }
+              }
+            }
+
+            return Array.from(counts.entries())
+              .map(([name, v]) => ({
+                name,
+                count: v.count,
+                latestAt: v.latestAt,
+              }))
+              .sort(
+                (a, b) =>
+                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
+              );
           },
         }),
       },
