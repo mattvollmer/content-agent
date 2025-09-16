@@ -220,18 +220,35 @@ Rules:
               .describe("Max number of posts to return. Defaults to 50."),
           }),
           execute: async ({ author, first }) => {
-            const query = /* GraphQL */ `
-              query FindByAuthor($author: String, $first: IntType) {
+            // Step 1: find author IDs matching the provided name (case-insensitive)
+            const authorsQuery = /* GraphQL */ `
+              query FindAuthorIds($author: String) {
+                allAuthors(
+                  filter: {
+                    name: {
+                      matches: { pattern: $author, caseSensitive: false }
+                    }
+                  }
+                ) {
+                  id
+                }
+              }
+            `;
+
+            const authorsData = await datoQuery<{
+              allAuthors: Array<{ id: string }>;
+            }>(authorsQuery, { author });
+
+            const authorIds = authorsData.allAuthors?.map((a) => a.id) ?? [];
+            if (!authorIds.length) return [];
+
+            // Step 2: fetch blogs that reference any of these authors
+            const blogsQuery = /* GraphQL */ `
+              query BlogsByAuthorIds($authorIds: [ItemId], $first: IntType) {
                 allBlogs(
                   orderBy: _createdAt_DESC
                   first: $first
-                  filter: {
-                    authors: {
-                      name: {
-                        matches: { pattern: $author, caseSensitive: false }
-                      }
-                    }
-                  }
+                  filter: { authors: { anyIn: $authorIds } }
                 ) {
                   id
                   title
@@ -247,7 +264,7 @@ Rules:
               }
             `;
 
-            const data = await datoQuery<{
+            const blogsData = await datoQuery<{
               allBlogs: Array<{
                 id: string;
                 title: string | null;
@@ -258,9 +275,9 @@ Rules:
                 _createdAt: string;
                 authors?: Array<{ name: string | null }>;
               }>;
-            }>(query, { author, first });
+            }>(blogsQuery, { authorIds, first });
 
-            return data.allBlogs;
+            return blogsData.allBlogs;
           },
         }),
 
