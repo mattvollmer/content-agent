@@ -54,6 +54,7 @@ Rules:
 - Clearly label whether posts are draft or published using the _status field.
 - Prefer the most recent content first.
 - If the user asks for specific posts (by slug or id), retrieve only what is necessary.
+- For targeted searches, use the author/topic search tools without fetching content.
 - If an operation fails, return the error message without guessing.
 `,
       messages: convertToModelMessages(messages),
@@ -199,6 +200,128 @@ Rules:
               query,
             );
             return data._allBlogsMeta.count;
+          },
+        }),
+
+        find_blogs_by_author: tool({
+          description:
+            "Find recent blog posts by author name (case-insensitive). Returns metadata only and authors; does not include content.",
+          inputSchema: z.object({
+            author: z
+              .string()
+              .min(1)
+              .describe("Author name or partial match, case-insensitive."),
+            first: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(50)
+              .describe("Max number of posts to return. Defaults to 50."),
+          }),
+          execute: async ({ author, first }) => {
+            const query = /* GraphQL */ `
+              query FindByAuthor($author: String, $first: IntType) {
+                allBlogs(
+                  orderBy: _createdAt_DESC
+                  first: $first
+                  filter: {
+                    authors: {
+                      name: {
+                        matches: { pattern: $author, caseSensitive: false }
+                      }
+                    }
+                  }
+                ) {
+                  id
+                  title
+                  _firstPublishedAt
+                  description
+                  slug
+                  _status
+                  _createdAt
+                  authors {
+                    name
+                  }
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              allBlogs: Array<{
+                id: string;
+                title: string | null;
+                _firstPublishedAt: string | null;
+                description: string | null;
+                slug: string | null;
+                _status: string;
+                _createdAt: string;
+                authors?: Array<{ name: string | null }>;
+              }>;
+            }>(query, { author, first });
+
+            return data.allBlogs;
+          },
+        }),
+
+        find_blogs_by_description: tool({
+          description:
+            "Find recent blog posts by topic keywords in the description (case-insensitive). Returns metadata only and authors; does not include content.",
+          inputSchema: z.object({
+            q: z
+              .string()
+              .min(1)
+              .describe(
+                "Keyword(s) to search in description, case-insensitive.",
+              ),
+            first: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(50)
+              .describe("Max number of posts to return. Defaults to 50."),
+          }),
+          execute: async ({ q, first }) => {
+            const query = /* GraphQL */ `
+              query FindByDescription($q: String, $first: IntType) {
+                allBlogs(
+                  orderBy: _createdAt_DESC
+                  first: $first
+                  filter: {
+                    description: {
+                      matches: { pattern: $q, caseSensitive: false }
+                    }
+                  }
+                ) {
+                  id
+                  title
+                  _firstPublishedAt
+                  description
+                  slug
+                  _status
+                  _createdAt
+                  authors {
+                    name
+                  }
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              allBlogs: Array<{
+                id: string;
+                title: string | null;
+                _firstPublishedAt: string | null;
+                description: string | null;
+                slug: string | null;
+                _status: string;
+                _createdAt: string;
+                authors?: Array<{ name: string | null }>;
+              }>;
+            }>(query, { q, first });
+
+            return data.allBlogs;
           },
         }),
       },
