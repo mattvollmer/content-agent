@@ -3,23 +3,202 @@ import * as blink from "blink";
 import { z } from "zod";
 import { convertToModelMessages } from "ai";
 
+const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
+
+async function datoQuery<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+) {
+  const token = process.env.DATOCMS_API_TOKEN;
+  if (!token) {
+    throw new Error(
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
+    );
+  }
+
+  const res = await fetch(DATOCMS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      // Include drafts so the agent can report on both draft and published content
+      "X-Include-Drafts": "true",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  const json = (await res.json()) as {
+    data?: T;
+    errors?: { message: string }[];
+  };
+
+  if (!res.ok || json.errors) {
+    const err = json.errors?.map((e) => e.message).join("; ") || res.statusText;
+    throw new Error(`DatoCMS GraphQL error: ${err}`);
+  }
+
+  return json.data as T;
+}
+
 export default blink.agent({
   displayName: "dato-agent",
 
   async sendMessages({ messages }) {
     return streamText({
       model: "anthropic/claude-sonnet-4",
-      system: `You are a basic agent the user will customize.
+      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts.
 
-Suggest the user adds tools to the agent. Demonstrate your capabilities with the IP tool.`,
+Rules:
+- When listing or summarizing posts, only fetch lightweight metadata (id, title, _firstPublishedAt, description, slug, _status, _createdAt) and the total count.
+- Do NOT fetch or read the full content/body of posts unless the user explicitly asks for additional context or the content itself. Only then, call the content tool.
+- Clearly label whether posts are draft or published using the _status field.
+- Prefer the most recent content first.
+- If the user asks for specific posts (by slug or id), retrieve only what is necessary.
+- If an operation fails, return the error message without guessing.
+`,
       messages: convertToModelMessages(messages),
       tools: {
-        get_ip_info: tool({
-          description: "Get IP address information of the computer.",
+        get_blogs_overview: tool({
+          description:
+            "Retrieve the total count and a list of recent blog posts (metadata only, no content). Use this to answer questions about what content exists.",
+          inputSchema: z.object({
+            first: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(50)
+              .describe(
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
+              ),
+          }),
+          execute: async ({ first }) => {
+            const query = /* GraphQL */ `
+              query BlogsOverview($first: Int!) {
+                _allBlogsMeta {
+                  count
+                }
+                allBlogs(orderBy: _createdAt_DESC, first: $first) {
+                  id
+                  title
+                  _firstPublishedAt
+                  description
+                  slug
+                  _status
+                  _createdAt
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              _allBlogsMeta: { count: number };
+              allBlogs: Array<{
+                id: string;
+                title: string | null;
+                _firstPublishedAt: string | null;
+                description: string | null;
+                slug: string | null;
+                _status: string;
+                _createdAt: string;
+              }>;
+            }>(query, { first });
+
+            return data;
+          },
+        }),
+
+        get_blog_content: tool({
+          description:
+            "Fetch the full content/body for a single blog post. Use ONLY when the user explicitly asks for additional context about a post's content.",
+          inputSchema: z
+            .object({
+              id: z.string().optional(),
+              slug: z.string().optional(),
+            })
+            .refine((v) => Boolean(v.id || v.slug), {
+              message: "Provide either id or slug to locate the blog post.",
+            }),
+          execute: async ({ id, slug }) => {
+            if (id) {
+              const queryById = /* GraphQL */ `
+                query BlogContentById($id: ItemId!) {
+                  allBlogs(first: 1, filter: { id: { eq: $id } }) {
+                    id
+                    slug
+                    title
+                    _status
+                    content {
+                      ... on TextRecord {
+                        text
+                      }
+                    }
+                  }
+                }
+              `;
+
+              const data = await datoQuery<{
+                allBlogs: Array<{
+                  id: string;
+                  slug: string | null;
+                  title: string | null;
+                  _status: string;
+                  content?: Array<{
+                    __typename?: string;
+                    text?: string | null;
+                  }>;
+                }>;
+              }>(queryById, { id });
+
+              return data.allBlogs?.[0] || null;
+            }
+
+            const queryBySlug = /* GraphQL */ `
+              query BlogContentBySlug($slug: String!) {
+                allBlogs(first: 1, filter: { slug: { eq: $slug } }) {
+                  id
+                  slug
+                  title
+                  _status
+                  content {
+                    ... on TextRecord {
+                      text
+                    }
+                  }
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              allBlogs: Array<{
+                id: string;
+                slug: string | null;
+                title: string | null;
+                _status: string;
+                content?: Array<{ __typename?: string; text?: string | null }>;
+              }>;
+            }>(queryBySlug, { slug });
+
+            return data.allBlogs?.[0] || null;
+          },
+        }),
+
+        get_blogs_count: tool({
+          description:
+            "Return just the total number of blog posts. Use for quick metrics without listing posts.",
           inputSchema: z.object({}),
           execute: async () => {
-            const response = await fetch("https://ipinfo.io/json");
-            return response.json();
+            const query = /* GraphQL */ `
+              query BlogsCount {
+                _allBlogsMeta {
+                  count
+                }
+              }
+            `;
+
+            const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
+              query,
+            );
+            return data._allBlogsMeta.count;
           },
         }),
       },
