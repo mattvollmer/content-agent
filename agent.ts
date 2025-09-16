@@ -7,12 +7,12 @@ const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
 
 async function datoQuery<T>(
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
 ) {
   const token = process.env.DATOCMS_API_TOKEN;
   if (!token) {
     throw new Error(
-      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key."
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
     );
   }
 
@@ -72,13 +72,13 @@ Rules:
               .max(100)
               .default(50)
               .describe(
-                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small."
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
               ),
             includeAuthors: z
               .boolean()
               .default(false)
               .describe(
-                "Include authors { name } to show who wrote each post. Defaults to false."
+                "Include authors { name } to show who wrote each post. Defaults to false.",
               ),
           }),
           execute: async ({ first, includeAuthors }) => {
@@ -210,7 +210,7 @@ Rules:
             `;
 
             const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
-              query
+              query,
             );
             return data._allBlogsMeta.count;
           },
@@ -302,7 +302,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in description, case-insensitive."
+                "Keyword(s) to search in description, case-insensitive.",
               ),
             first: z
               .number()
@@ -363,7 +363,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'."
+                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'.",
               ),
             limit: z
               .number()
@@ -380,13 +380,13 @@ Rules:
               .boolean()
               .default(false)
               .describe(
-                "Include draft releases (requires token with access). Default false."
+                "Include draft releases (requires token with access). Default false.",
               ),
             includeBody: z
               .boolean()
               .default(false)
               .describe(
-                "Include release body text. Default false to keep payload small."
+                "Include release body text. Default false to keep payload small.",
               ),
           }),
           execute: async ({
@@ -399,14 +399,14 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
             const url = new URL(
               `https://api.github.com/repos/coder/${encodeURIComponent(
-                repo
-              )}/releases`
+                repo,
+              )}/releases`,
             );
             url.searchParams.set("per_page", String(Math.min(limit, 100)));
 
@@ -428,7 +428,7 @@ Rules:
             }>;
             if (!res.ok) {
               throw new Error(
-                `GitHub releases error: ${res.status} ${res.statusText}`
+                `GitHub releases error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -443,7 +443,7 @@ Rules:
                 prerelease: r.prerelease,
                 publishedAt: r.published_at,
                 url: r.html_url,
-                body: includeBody ? r.body ?? null : undefined,
+                body: includeBody ? (r.body ?? null) : undefined,
               }));
 
             return filtered;
@@ -488,7 +488,7 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
@@ -508,7 +508,7 @@ Rules:
 
             if (!res.ok) {
               throw new Error(
-                `GitHub repos error: ${res.status} ${res.statusText}`
+                `GitHub repos error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -552,7 +552,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in descriptions, case-insensitive."
+                "Keyword(s) to search in descriptions, case-insensitive.",
               ),
             first: z
               .number()
@@ -561,7 +561,7 @@ Rules:
               .max(200)
               .default(100)
               .describe(
-                "How many posts to consider for ranking (most recent first)."
+                "How many posts to consider for ranking (most recent first).",
               ),
           }),
           execute: async ({ q, first }) => {
@@ -622,7 +622,7 @@ Rules:
               }))
               .sort(
                 (a, b) =>
-                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1)
+                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
               );
           },
         }),
@@ -635,7 +635,7 @@ Rules:
               .array(z.string())
               .min(1)
               .describe(
-                "Keywords or topics from recent releases to check coverage for."
+                "Keywords or topics from recent releases to check coverage for.",
               ),
             lookbackDays: z
               .number()
@@ -644,7 +644,7 @@ Rules:
               .max(365)
               .default(90)
               .describe(
-                "How many days back to check for existing coverage. Default 90 days."
+                "How many days back to check for existing coverage. Default 90 days.",
               ),
           }),
           execute: async ({ keywords, lookbackDays }) => {
@@ -741,7 +741,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               gaps.push({
@@ -759,7 +759,7 @@ Rules:
                 totalKeywords: keywords.length,
                 uncoveredKeywords: gaps.filter((g) => g.hasGap).length,
                 gapPercentage: Math.round(
-                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100
+                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100,
                 ),
               },
             };
@@ -943,11 +943,11 @@ Rules:
                   name: z.string().nullable(),
                   tag: z.string().nullable(),
                   body: z.string().nullable().optional(),
-                })
+                }),
               )
               .min(1)
               .describe(
-                "Release data from get_github_releases to analyze for topics."
+                "Release data from get_github_releases to analyze for topics.",
               ),
           }),
           execute: async ({ releaseData }) => {
@@ -965,6 +965,7 @@ Rules:
                 .replace(/[^a-z0-9\s]/g, " ")
                 .split(/\s+/)
                 .filter((word) => word.length > 2);
+
               // Extract meaningful keywords
               const keywords = text.filter(
                 (word) =>
@@ -977,16 +978,35 @@ Rules:
                     "that",
                     "fix",
                     "add",
+                    "adds",
+                    "added",
                     "update",
+                    "updated",
+                    "updating",
                     "new",
                     "now",
                     "can",
                     "will",
-                  ].includes(word)
+                    "from",
+                    "into",
+                    "to",
+                    "in",
+                    "on",
+                    "of",
+                    "a",
+                    "an",
+                    "by",
+                    "is",
+                    "are",
+                    "was",
+                    "were",
+                  ].includes(word),
               );
+
               for (const keyword of keywords) {
                 themes.set(keyword, (themes.get(keyword) || 0) + 1);
               }
+
               // Generate content ideas based on release
               const releaseName = release.name || release.tag || "Release";
               contentIdeas.push({
@@ -1016,6 +1036,139 @@ Rules:
                 "Performance and improvement highlights",
                 "Developer experience stories",
               ],
+            };
+          },
+        }),
+
+        extract_release_themes: tool({
+          description:
+            "Extract top themes from release data (names/tags and optionally bodies). Returns unigrams, bigrams, and trigrams with frequencies.",
+          inputSchema: z.object({
+            releaseData: z
+              .array(
+                z.object({
+                  name: z.string().nullable(),
+                  tag: z.string().nullable(),
+                  body: z.string().nullable().optional(),
+                }),
+              )
+              .min(1)
+              .describe("Release data from get_github_releases to analyze."),
+            includeBody: z
+              .boolean()
+              .default(false)
+              .describe("If true, consider release body text when present."),
+            topN: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(20)
+              .describe("How many items to return per n-gram category."),
+            minTokenLength: z
+              .number()
+              .int()
+              .min(1)
+              .max(10)
+              .default(3)
+              .describe("Minimum token length to include (default 3)."),
+            extraStopwords: z
+              .array(z.string())
+              .default([])
+              .describe("Additional stopwords to exclude."),
+          }),
+          execute: async ({
+            releaseData,
+            includeBody,
+            topN,
+            minTokenLength,
+            extraStopwords,
+          }) => {
+            const baseStop = new Set<string>([
+              "the",
+              "and",
+              "for",
+              "with",
+              "this",
+              "that",
+              "fix",
+              "add",
+              "adds",
+              "added",
+              "update",
+              "updated",
+              "updating",
+              "new",
+              "now",
+              "can",
+              "will",
+              "from",
+              "into",
+              "to",
+              "in",
+              "on",
+              "of",
+              "a",
+              "an",
+              "by",
+              "is",
+              "are",
+              "was",
+              "were",
+            ]);
+            for (const sw of extraStopwords) baseStop.add(sw.toLowerCase());
+
+            const uni = new Map<string, number>();
+            const bi = new Map<string, number>();
+            const tri = new Map<string, number>();
+
+            const tokenize = (s: string) =>
+              s
+                .replace(/([a-z])([A-Z])/g, "$1 $2")
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .split(/\s+/)
+                .filter(
+                  (t) => t && t.length >= minTokenLength && !baseStop.has(t),
+                );
+
+            const countNGrams = (tokens: string[]) => {
+              for (let i = 0; i < tokens.length; i++) {
+                const w1 = tokens[i];
+                uni.set(w1, (uni.get(w1) || 0) + 1);
+                if (i + 1 < tokens.length) {
+                  const w2 = tokens[i + 1];
+                  const b = `${w1} ${w2}`;
+                  bi.set(b, (bi.get(b) || 0) + 1);
+                }
+                if (i + 2 < tokens.length) {
+                  const w2 = tokens[i + 1];
+                  const w3 = tokens[i + 2];
+                  const t = `${w1} ${w2} ${w3}`;
+                  tri.set(t, (tri.get(t) || 0) + 1);
+                }
+              }
+            };
+
+            for (const r of releaseData) {
+              const parts = [r.name || "", r.tag || ""];
+              if (includeBody && r.body) parts.push(r.body);
+              const text = parts.join(" ");
+              const tokens = tokenize(text);
+              countNGrams(tokens);
+            }
+
+            const top = (m: Map<string, number>) =>
+              Array.from(m.entries())
+                .sort((a, b) => b[1] - a[1] || (a[0] > b[0] ? 1 : -1))
+                .slice(0, topN)
+                .map(([term, frequency]) => ({ term, frequency }));
+
+            return {
+              analyzedReleases: releaseData.length,
+              unigrams: top(uni),
+              bigrams: top(bi),
+              trigrams: top(tri),
             };
           },
         }),
@@ -1141,7 +1294,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               results.push({
@@ -1167,11 +1320,11 @@ Rules:
               summary: {
                 totalMatches: results.reduce(
                   (sum, r) => sum + r.matchingPosts,
-                  0
+                  0,
                 ),
                 averageMatchesPerKeyword: Math.round(
                   results.reduce((sum, r) => sum + r.matchingPosts, 0) /
-                    keywords.length
+                    keywords.length,
                 ),
               },
             };
