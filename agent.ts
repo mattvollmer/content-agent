@@ -1,9 +1,10 @@
 import { streamText, tool } from "ai";
 import * as blink from "blink";
 import { z } from "zod";
+import { convertToModelMessages } from "ai";
 
 export default blink.agent({
-  name: "dato-agent",
+  displayName: "dato-agent",
 
   async sendMessages({ messages }) {
     return streamText({
@@ -11,7 +12,7 @@ export default blink.agent({
       system: `You are a basic agent the user will customize.
 
 Suggest the user adds tools to the agent. Demonstrate your capabilities with the IP tool.`,
-      messages,
+      messages: convertToModelMessages(messages),
       tools: {
         get_ip_info: tool({
           description: "Get IP address information of the computer.",
