@@ -46,7 +46,7 @@ export default blink.agent({
   async sendMessages({ messages }) {
     return streamText({
       model: "anthropic/claude-sonnet-4",
-      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, and correlate recent GitHub releases to potential authors.
+      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
 
 Rules:
 - When listing or summarizing posts, only fetch lightweight metadata (id, title, _firstPublishedAt, description, slug, _status, _createdAt) and the total count.
@@ -56,6 +56,7 @@ Rules:
 - If the user asks for specific posts (by slug or id), retrieve only what is necessary.
 - For targeted searches, use the author/topic search tools without fetching content.
 - For GitHub releases, default to metadata only (exclude body) unless explicitly requested to include it.
+- For content planning, focus on identifying gaps and matching expertise to topics.
 - If an operation fails, return the error message without guessing.
 `,
       messages: convertToModelMessages(messages),
@@ -623,6 +624,557 @@ Rules:
                 (a, b) =>
                   b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
               );
+          },
+        }),
+
+        analyze_content_gaps: tool({
+          description:
+            "Compare release keywords/topics to existing blog coverage to identify content gaps. Shows what releases haven't been covered.",
+          inputSchema: z.object({
+            keywords: z
+              .array(z.string())
+              .min(1)
+              .describe(
+                "Keywords or topics from recent releases to check coverage for.",
+              ),
+            lookbackDays: z
+              .number()
+              .int()
+              .min(1)
+              .max(365)
+              .default(90)
+              .describe(
+                "How many days back to check for existing coverage. Default 90 days.",
+              ),
+          }),
+          execute: async ({ keywords, lookbackDays }) => {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
+            const cutoffISO = cutoffDate.toISOString();
+
+            const gaps: Array<{
+              keyword: string;
+              existingPosts: number;
+              recentPosts: Array<{
+                id: string;
+                title: string | null;
+                _createdAt: string;
+                _status: string;
+                slug: string | null;
+              }>;
+              hasGap: boolean;
+            }> = [];
+            for (const keyword of keywords) {
+              const queryTitle = /* GraphQL */ `
+                query CheckCoverageTitle($keyword: String!, $since: DateTime!) {
+                  allBlogs(
+                    filter: {
+                      _createdAt: { gte: $since }
+                      title: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                    orderBy: _createdAt_DESC
+                  ) {
+                    id
+                    title
+                    _createdAt
+                    _status
+                    slug
+                  }
+                }
+              `;
+
+              const queryDesc = /* GraphQL */ `
+                query CheckCoverageDesc($keyword: String!, $since: DateTime!) {
+                  allBlogs(
+                    filter: {
+                      _createdAt: { gte: $since }
+                      description: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                    orderBy: _createdAt_DESC
+                  ) {
+                    id
+                    title
+                    _createdAt
+                    _status
+                    slug
+                  }
+                }
+              `;
+
+              const [titleData, descData] = await Promise.all([
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    slug: string | null;
+                  }>;
+                }>(queryTitle, { keyword, since: cutoffISO }),
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    slug: string | null;
+                  }>;
+                }>(queryDesc, { keyword, since: cutoffISO }),
+              ]);
+
+              // Dedupe by id
+              const byId = new Map<
+                string,
+                {
+                  id: string;
+                  title: string | null;
+                  _createdAt: string;
+                  _status: string;
+                  slug: string | null;
+                }
+              >();
+              for (const p of [...titleData.allBlogs, ...descData.allBlogs]) {
+                byId.set(p.id, p);
+              }
+              const merged = Array.from(byId.values()).sort((a, b) =>
+                a._createdAt < b._createdAt ? 1 : -1,
+              );
+
+              gaps.push({
+                keyword,
+                existingPosts: merged.length,
+                recentPosts: merged.slice(0, 3),
+                hasGap: merged.length === 0,
+              });
+            }
+
+            return {
+              lookbackDays,
+              analysis: gaps,
+              summary: {
+                totalKeywords: keywords.length,
+                uncoveredKeywords: gaps.filter((g) => g.hasGap).length,
+                gapPercentage: Math.round(
+                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100,
+                ),
+              },
+            };
+          },
+        }),
+
+        get_author_expertise: tool({
+          description:
+            "Analyze an author's historical posts to understand their topic areas and expertise based on titles and descriptions.",
+          inputSchema: z.object({
+            authorName: z
+              .string()
+              .min(1)
+              .describe("Author name to analyze (case-insensitive match)."),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(50)
+              .describe("Max posts to analyze. Default 50."),
+          }),
+          execute: async ({ authorName, limit }) => {
+            // Step 1: resolve author IDs by name (case-insensitive)
+            const authorsQuery = /* GraphQL */ `
+              query FindAuthorIdsForExpertise($authorName: String!) {
+                allAuthors(
+                  filter: {
+                    name: {
+                      matches: { pattern: $authorName, caseSensitive: false }
+                    }
+                  }
+                ) {
+                  id
+                  name
+                }
+              }
+            `;
+
+            const authors = await datoQuery<{
+              allAuthors: Array<{ id: string; name: string | null }>;
+            }>(authorsQuery, { authorName });
+
+            const authorIds = authors.allAuthors?.map((a) => a.id) ?? [];
+            if (!authorIds.length) {
+              return {
+                authorName,
+                postCount: 0,
+                expertise: [],
+                recentPosts: [],
+              };
+            }
+
+            // Step 2: fetch blogs linked to any of these authors
+            const blogsQuery = /* GraphQL */ `
+              query AuthorExpertiseBlogs(
+                $authorIds: [ItemId]
+                $first: IntType
+              ) {
+                allBlogs(
+                  orderBy: _createdAt_DESC
+                  first: $first
+                  filter: { authors: { anyIn: $authorIds } }
+                ) {
+                  id
+                  title
+                  description
+                  _createdAt
+                  _status
+                  slug
+                }
+              }
+            `;
+
+            const data = await datoQuery<{
+              allBlogs: Array<{
+                id: string;
+                title: string | null;
+                description: string | null;
+                _createdAt: string;
+                _status: string;
+                slug: string | null;
+              }>;
+            }>(blogsQuery, { authorIds, first: limit });
+
+            if (!data.allBlogs.length) {
+              return {
+                authorName,
+                postCount: 0,
+                expertise: [],
+                recentPosts: [],
+              };
+            }
+
+            // Extract keywords from titles and descriptions
+            const keywords = new Map<string, number>();
+            const stopWords = new Set([
+              "the",
+              "and",
+              "or",
+              "but",
+              "in",
+              "on",
+              "at",
+              "to",
+              "for",
+              "of",
+              "with",
+              "by",
+              "is",
+              "are",
+              "was",
+              "were",
+              "be",
+              "been",
+              "have",
+              "has",
+              "had",
+              "do",
+              "does",
+              "did",
+              "will",
+              "would",
+              "could",
+              "should",
+              "may",
+              "might",
+              "can",
+              "this",
+              "that",
+              "these",
+              "those",
+              "a",
+              "an",
+              "how",
+              "what",
+              "when",
+              "where",
+              "why",
+              "who",
+            ]);
+
+            for (const post of data.allBlogs) {
+              const text = `${post.title || ""} ${post.description || ""}`
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .split(/\s+/)
+                .filter((word) => word.length > 2 && !stopWords.has(word));
+
+              for (const word of text) {
+                keywords.set(word, (keywords.get(word) || 0) + 1);
+              }
+            }
+
+            const topKeywords = Array.from(keywords.entries())
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 10)
+              .map(([word, count]) => ({ keyword: word, frequency: count }));
+
+            return {
+              authorName,
+              postCount: data.allBlogs.length,
+              expertise: topKeywords,
+              recentPosts: data.allBlogs.slice(0, 5).map((p) => ({
+                title: p.title,
+                slug: p.slug,
+                createdAt: p._createdAt,
+                status: p._status,
+              })),
+            };
+          },
+        }),
+
+        suggest_content_topics: tool({
+          description:
+            "Extract themes and keywords from GitHub releases to suggest blog post topics and angles.",
+          inputSchema: z.object({
+            releaseData: z
+              .array(
+                z.object({
+                  name: z.string().nullable(),
+                  tag: z.string().nullable(),
+                  body: z.string().nullable().optional(),
+                }),
+              )
+              .min(1)
+              .describe(
+                "Release data from get_github_releases to analyze for topics.",
+              ),
+          }),
+          execute: async ({ releaseData }) => {
+            const themes = new Map<string, number>();
+            const contentIdeas: Array<{
+              release: string;
+              suggestedTopics: string[];
+            }> = [];
+
+            for (const release of releaseData) {
+              const text = `${release.name || ""} ${release.tag || ""} ${
+                release.body || ""
+              }`
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .split(/\s+/)
+                .filter((word) => word.length > 2);
+              // Extract meaningful keywords
+              const keywords = text.filter(
+                (word) =>
+                  ![
+                    "the",
+                    "and",
+                    "for",
+                    "with",
+                    "this",
+                    "that",
+                    "fix",
+                    "add",
+                    "update",
+                    "new",
+                    "now",
+                    "can",
+                    "will",
+                  ].includes(word),
+              );
+              for (const keyword of keywords) {
+                themes.set(keyword, (themes.get(keyword) || 0) + 1);
+              }
+              // Generate content ideas based on release
+              const releaseName = release.name || release.tag || "Release";
+              contentIdeas.push({
+                release: releaseName,
+                suggestedTopics: [
+                  `What's new in ${releaseName}`,
+                  `Getting started with ${releaseName} features`,
+                  `Migration guide for ${releaseName}`,
+                  `Deep dive into ${releaseName} improvements`,
+                ],
+              });
+            }
+
+            const topThemes = Array.from(themes.entries())
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 15)
+              .map(([theme, frequency]) => ({ theme, frequency }));
+
+            return {
+              analyzedReleases: releaseData.length,
+              topThemes,
+              contentIdeas,
+              generalSuggestions: [
+                "Feature spotlight posts",
+                "Tutorial and how-to guides",
+                "Migration and upgrade guides",
+                "Performance and improvement highlights",
+                "Developer experience stories",
+              ],
+            };
+          },
+        }),
+
+        find_similar_posts: tool({
+          description:
+            "Find existing blog posts that cover similar topics to given keywords, useful for understanding existing coverage.",
+          inputSchema: z.object({
+            keywords: z
+              .array(z.string())
+              .min(1)
+              .describe("Keywords to find similar posts for."),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(50)
+              .default(20)
+              .describe("Max posts to return per keyword. Default 20."),
+          }),
+          execute: async ({ keywords, limit }) => {
+            const results: Array<{
+              keyword: string;
+              matchingPosts: number;
+              posts: Array<{
+                title: string | null;
+                description: string | null;
+                slug: string | null;
+                createdAt: string;
+                status: string;
+                authors: string[];
+              }>;
+            }> = [];
+
+            for (const keyword of keywords) {
+              const queryTitle = /* GraphQL */ `
+                query SimilarPostsTitle($keyword: String!, $first: IntType) {
+                  allBlogs(
+                    orderBy: _createdAt_DESC
+                    first: $first
+                    filter: {
+                      title: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                  ) {
+                    id
+                    title
+                    description
+                    slug
+                    _createdAt
+                    _status
+                    authors {
+                      name
+                    }
+                  }
+                }
+              `;
+
+              const queryDesc = /* GraphQL */ `
+                query SimilarPostsDesc($keyword: String!, $first: IntType) {
+                  allBlogs(
+                    orderBy: _createdAt_DESC
+                    first: $first
+                    filter: {
+                      description: {
+                        matches: { pattern: $keyword, caseSensitive: false }
+                      }
+                    }
+                  ) {
+                    id
+                    title
+                    description
+                    slug
+                    _createdAt
+                    _status
+                    authors {
+                      name
+                    }
+                  }
+                }
+              `;
+
+              const [titleData, descData] = await Promise.all([
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    description: string | null;
+                    slug: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    authors?: Array<{ name: string | null }>;
+                  }>;
+                }>(queryTitle, { keyword, first: limit }),
+                datoQuery<{
+                  allBlogs: Array<{
+                    id: string;
+                    title: string | null;
+                    description: string | null;
+                    slug: string | null;
+                    _createdAt: string;
+                    _status: string;
+                    authors?: Array<{ name: string | null }>;
+                  }>;
+                }>(queryDesc, { keyword, first: limit }),
+              ]);
+
+              // Dedupe by id and sort
+              const byId = new Map<
+                string,
+                {
+                  id: string;
+                  title: string | null;
+                  description: string | null;
+                  slug: string | null;
+                  _createdAt: string;
+                  _status: string;
+                  authors?: Array<{ name: string | null }>;
+                }
+              >();
+              for (const p of [...titleData.allBlogs, ...descData.allBlogs]) {
+                byId.set(p.id, p);
+              }
+              const merged = Array.from(byId.values()).sort((a, b) =>
+                a._createdAt < b._createdAt ? 1 : -1,
+              );
+
+              results.push({
+                keyword,
+                matchingPosts: merged.length,
+                posts: merged.slice(0, limit).map((p) => ({
+                  title: p.title,
+                  description: p.description,
+                  slug: p.slug,
+                  createdAt: p._createdAt,
+                  status: p._status,
+                  authors:
+                    p.authors
+                      ?.map((a) => a.name)
+                      .filter((name): name is string => Boolean(name)) || [],
+                })),
+              });
+            }
+
+            return {
+              searchedKeywords: keywords.length,
+              results,
+              summary: {
+                totalMatches: results.reduce(
+                  (sum, r) => sum + r.matchingPosts,
+                  0,
+                ),
+                averageMatchesPerKeyword: Math.round(
+                  results.reduce((sum, r) => sum + r.matchingPosts, 0) /
+                    keywords.length,
+                ),
+              },
+            };
           },
         }),
       },
