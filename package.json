@@ -1,0 +1,12 @@
+{
+  "name": "dato-agent",
+  "main": "agent.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "ai": "^5.0.44",
+    "blink": "^0.1.22",
+    "esbuild": "^0.25.9",
+    "zod": "^4.1.8"
+  }
+}
