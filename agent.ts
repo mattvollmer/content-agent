@@ -74,7 +74,7 @@ Rules:
           }),
           execute: async ({ first }) => {
             const query = /* GraphQL */ `
-              query BlogsOverview($first: Int!) {
+              query BlogsOverview($first: IntType) {
                 _allBlogsMeta {
                   count
                 }
