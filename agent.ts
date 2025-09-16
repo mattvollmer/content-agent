@@ -449,6 +449,100 @@ Rules:
           },
         }),
 
+        list_accessible_repos: tool({
+          description:
+            "List repositories in the coder organization that are accessible. Use this to discover available repos for get_github_releases.",
+          inputSchema: z.object({
+            type: z
+              .enum(["all", "public", "private", "forks", "sources", "member"])
+              .default("all")
+              .describe("Filter repos by type. Default 'all'."),
+            sort: z
+              .enum(["created", "updated", "pushed", "full_name"])
+              .default("updated")
+              .describe("Sort order. Default 'updated'."),
+            direction: z
+              .enum(["asc", "desc"])
+              .default("desc")
+              .describe("Sort direction. Default 'desc' (newest first)."),
+            includeArchived: z
+              .boolean()
+              .default(false)
+              .describe("Include archived repositories. Default false."),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(30)
+              .describe("Max repos to return. Default 30."),
+          }),
+          execute: async ({
+            type,
+            sort,
+            direction,
+            includeArchived,
+            limit,
+          }) => {
+            const token = process.env.GITHUB_TOKEN;
+            if (!token) {
+              throw new Error(
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
+              );
+            }
+
+            const url = new URL("https://api.github.com/orgs/coder/repos");
+            url.searchParams.set("type", type);
+            url.searchParams.set("sort", sort);
+            url.searchParams.set("direction", direction);
+            url.searchParams.set("per_page", String(Math.min(limit, 100)));
+
+            const res = await fetch(url.toString(), {
+              headers: {
+                Accept: "application/vnd.github+json",
+                Authorization: `Bearer ${token}`,
+                "X-GitHub-Api-Version": "2022-11-28",
+              },
+            });
+
+            if (!res.ok) {
+              throw new Error(
+                `GitHub repos error: ${res.status} ${res.statusText}`,
+              );
+            }
+
+            const json = (await res.json()) as Array<{
+              name: string;
+              full_name: string;
+              private: boolean;
+              archived: boolean;
+              fork: boolean;
+              description: string | null;
+              language: string | null;
+              stargazers_count: number;
+              updated_at: string;
+              html_url: string;
+            }>;
+
+            const filtered = json
+              .filter((r) => (includeArchived ? true : !r.archived))
+              .map((r) => ({
+                name: r.name,
+                fullName: r.full_name,
+                private: r.private,
+                archived: r.archived,
+                fork: r.fork,
+                description: r.description,
+                language: r.language,
+                stars: r.stargazers_count,
+                updatedAt: r.updated_at,
+                url: r.html_url,
+              }));
+
+            return filtered;
+          },
+        }),
+
         rank_authors_for_keywords: tool({
           description:
             "Rank DatoCMS blog authors by how often they appear on posts matching the given keywords (in description). Metadata only.",
