@@ -7,12 +7,12 @@ const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
 
 async function datoQuery<T>(
   query: string,
-  variables?: Record<string, unknown>,
+  variables?: Record<string, unknown>
 ) {
   const token = process.env.DATOCMS_API_TOKEN;
   if (!token) {
     throw new Error(
-      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key."
     );
   }
 
@@ -67,16 +67,16 @@ Rules:
               .number()
               .int()
               .min(1)
-              .max(100)
+              .max(500)
               .default(50)
               .describe(
-                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small."
               ),
             includeAuthors: z
               .boolean()
               .default(false)
               .describe(
-                "Include authors { name } to show who wrote each post. Defaults to false.",
+                "Include authors { name } to show who wrote each post. Defaults to false."
               ),
           }),
           execute: async ({ first, includeAuthors }) => {
@@ -208,7 +208,7 @@ Rules:
             `;
 
             const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
-              query,
+              query
             );
             return data._allBlogsMeta.count;
           },
@@ -300,7 +300,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in description, case-insensitive.",
+                "Keyword(s) to search in description, case-insensitive."
               ),
             first: z
               .number()
