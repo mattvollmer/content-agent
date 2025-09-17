@@ -2,17 +2,157 @@ import { streamText, tool } from "ai";
 import * as blink from "blink";
 import { z } from "zod";
 import { convertToModelMessages } from "ai";
+import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
+import { isIP } from "node:net";
 
 const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
 
+// Simple in-memory cache for fetched pages
+const pageCache = new Map<string, { at: number; data: unknown }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function isPrivateHostname(host: string): boolean {
+  const lower = host.toLowerCase();
+  if (
+    lower === "localhost" ||
+    lower === "127.0.0.1" ||
+    lower === "0.0.0.0" ||
+    lower === "::1" ||
+    lower.endsWith(".local")
+  ) {
+    return true;
+  }
+  // If it's an IP, check private ranges
+  if (isIP(lower)) {
+    // IPv4 checks
+    if (lower.startsWith("10.")) return true;
+    if (lower.startsWith("127.")) return true;
+    if (lower.startsWith("192.168.")) return true;
+    const octets = lower.split(".").map((n) => parseInt(n, 10));
+    if (
+      octets.length === 4 &&
+      octets[0] === 172 &&
+      octets[1] >= 16 &&
+      octets[1] <= 31
+    )
+      return true;
+  }
+  return false;
+}
+
+async function fetchRobotsAllowed(target: URL, userAgent = "content-agent") {
+  try {
+    const robotsUrl = new URL(
+      "/robots.txt",
+      `${target.protocol}//${target.host}`,
+    );
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(robotsUrl.toString(), {
+      signal: controller.signal,
+    });
+    clearTimeout(t);
+    if (!res.ok) return true; // no robots to enforce
+    const body = await res.text();
+    // Minimal robots parsing for User-agent: * or matching agent
+    const lines = body
+      .split(/\r?\n/)
+      .map((l) => l.replace(/#.*/, "").trim())
+      .filter(Boolean);
+    type Rule = { type: "allow" | "disallow"; path: string };
+    const groups: { agents: string[]; rules: Rule[] }[] = [];
+    let current: { agents: string[]; rules: Rule[] } | null = null;
+    for (const line of lines) {
+      const [rawKey, ...rest] = line.split(":");
+      if (!rawKey || rest.length === 0) continue;
+      const key = rawKey.toLowerCase().trim();
+      const value = rest.join(":").trim();
+      if (key === "user-agent") {
+        if (current && current.rules.length > 0) groups.push(current);
+        current = { agents: [value.toLowerCase()], rules: [] };
+      } else if (key === "allow" || key === "disallow") {
+        if (!current) current = { agents: ["*"], rules: [] };
+        current.rules.push({ type: key, path: value });
+      }
+    }
+    if (current) groups.push(current);
+
+    // Choose rules for agent or *
+    const ua = userAgent.toLowerCase();
+    const applicable =
+      groups.find((g) => g.agents.some((a) => a === ua)) ||
+      groups.find((g) => g.agents.some((a) => a === "*"));
+    if (!applicable) return true;
+
+    const path = target.pathname || "/";
+    // Longest match wins between allow/disallow
+    let best: { type: "allow" | "disallow"; len: number } | null = null;
+    for (const r of applicable.rules) {
+      if (r.path === "") continue;
+      if (path.startsWith(r.path)) {
+        const len = r.path.length;
+        if (!best || len > best.len) best = { type: r.type, len };
+      }
+    }
+    if (!best) return true;
+    return best.type === "allow";
+  } catch {
+    return true; // fail-open to avoid false negatives
+  }
+}
+
+function extractMetadata(doc: Document) {
+  const getMeta = (name: string) =>
+    doc.querySelector(`meta[name="${name}"]`)?.getAttribute("content") ||
+    doc.querySelector(`meta[property="${name}"]`)?.getAttribute("content") ||
+    null;
+  const title =
+    doc.querySelector("meta[property='og:title']")?.getAttribute("content") ||
+    doc.querySelector("title")?.textContent ||
+    null;
+  const description =
+    getMeta("description") || getMeta("og:description") || null;
+  const publishedAt = getMeta("article:published_time");
+  const author = getMeta("author") || getMeta("article:author");
+  return { title, description, publishedAt, author };
+}
+
+function tokenize(s: string) {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+}
+
+function relevantPassages(text: string, question: string, max = 10) {
+  const qTokens = new Set(tokenize(question));
+  const paras = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 60);
+  const scored = paras
+    .map((p) => {
+      const t = tokenize(p);
+      const score = t.reduce((acc, w) => acc + (qTokens.has(w) ? 1 : 0), 0);
+      return { p, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(({ p, score }) => ({ snippet: p.slice(0, 600), score }));
+  return scored;
+}
+
 async function datoQuery<T>(
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
 ) {
   const token = process.env.DATOCMS_API_TOKEN;
   if (!token) {
     throw new Error(
-      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key."
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
     );
   }
 
@@ -58,10 +198,125 @@ Rules:
 - For targeted searches, use the author/topic search tools without fetching content.
 - For GitHub releases, default to metadata only (exclude body) unless explicitly requested to include it.
 - For content planning, focus on identifying gaps and matching expertise to topics.
+- Use the web browsing tool only when the user asks for page content, or when additional context is needed from links found in blog posts or releases.
 - If an operation fails, return the error message without guessing.
 `,
       messages: convertToModelMessages(messages),
       tools: {
+        browse_url: tool({
+          description:
+            "Fetch and analyze a public web page (HTML-only). Respects robots.txt, blocks private addresses, 10s timeout, 5MB max. Use when the user asks for page content or when following links in releases/blog posts.",
+          inputSchema: z.object({
+            url: z.string().url(),
+            question: z
+              .string()
+              .optional()
+              .describe(
+                "Optional focus question; returns relevant passages from the page content.",
+              ),
+            cache: z
+              .boolean()
+              .default(true)
+              .describe("Cache the fetched page for ~10 minutes."),
+          }),
+          execute: async ({ url, question, cache }) => {
+            const u = new URL(url);
+            if (u.protocol !== "http:" && u.protocol !== "https:") {
+              throw new Error("Only http/https URLs are supported.");
+            }
+            if (isPrivateHostname(u.hostname)) {
+              throw new Error("Blocked private/local address.");
+            }
+
+            // Cache
+            const key = `${u.toString()}`;
+            const now = Date.now();
+            const cached = cache ? pageCache.get(key) : undefined;
+            if (cached && now - cached.at < CACHE_TTL_MS) {
+              return cached.data;
+            }
+
+            // Robots
+            const allowed = await fetchRobotsAllowed(u);
+            if (!allowed) {
+              throw new Error("Fetching disallowed by robots.txt.");
+            }
+
+            // Fetch with timeout
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), 10_000);
+            const res = await fetch(u.toString(), {
+              redirect: "follow",
+              signal: controller.signal,
+              headers: {
+                "User-Agent":
+                  "content-agent (+https://github.com/mattvollmer/content-agent)",
+                Accept: "text/html,application/xhtml+xml",
+              },
+            });
+            clearTimeout(t);
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status} ${res.statusText}`);
+            }
+            const cl = res.headers.get("content-length");
+            if (cl && Number(cl) > 5 * 1024 * 1024) {
+              throw new Error("Page exceeds 5MB limit.");
+            }
+            const html = await res.text();
+            if (html.length > 5 * 1024 * 1024) {
+              throw new Error("Page exceeds 5MB limit.");
+            }
+            const dom = new JSDOM(html, { url: u.toString() });
+            const doc = dom.window.document;
+            const meta = extractMetadata(doc);
+            const reader = new Readability(doc);
+            const article = reader.parse();
+            const mainText =
+              article?.textContent || doc.body?.textContent || "";
+
+            // Collect headings and links
+            const headings = Array.from(
+              doc.querySelectorAll("h1, h2, h3, h4") as NodeListOf<Element>,
+            ).map((h) => ({
+              tag: (h as Element).tagName,
+              text: ((h as Element).textContent || "").trim().slice(0, 300),
+            }));
+            const links = Array.from(
+              doc.querySelectorAll("a[href]") as NodeListOf<Element>,
+            )
+              .slice(0, 500)
+              .map((a) => {
+                const el = a as Element;
+                const href = (el.getAttribute("href") || "").trim();
+                const rel = (el.getAttribute("rel") || "").toLowerCase();
+                const text = (el.textContent || "").trim().replace(/\s+/g, " ");
+                return {
+                  href: new URL(href, u).toString(),
+                  text: text.slice(0, 200),
+                  rel,
+                  nofollow: rel.includes("nofollow"),
+                };
+              });
+
+            const result = {
+              url: u.toString(),
+              finalUrl: res.url || u.toString(),
+              ...meta,
+              wordCount: mainText ? mainText.split(/\s+/).length : 0,
+              headings,
+              links,
+              excerpt: mainText.slice(0, 1000),
+              mainText,
+              relevantPassages: question
+                ? relevantPassages(mainText, question)
+                : [],
+            };
+
+            if (cache) pageCache.set(key, { at: now, data: result });
+            return result;
+          },
+        }),
+
         get_blogs_overview: tool({
           description:
             "Retrieve the total count and a list of recent blog posts (metadata only, no content). Use this to answer questions about what content exists.",
@@ -73,13 +328,13 @@ Rules:
               .max(100)
               .default(50)
               .describe(
-                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small."
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
               ),
             includeAuthors: z
               .boolean()
               .default(false)
               .describe(
-                "Include authors { name } to show who wrote each post. Defaults to false."
+                "Include authors { name } to show who wrote each post. Defaults to false.",
               ),
           }),
           execute: async ({ first, includeAuthors }) => {
@@ -211,7 +466,7 @@ Rules:
             `;
 
             const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
-              query
+              query,
             );
             return data._allBlogsMeta.count;
           },
@@ -303,7 +558,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in description, case-insensitive."
+                "Keyword(s) to search in description, case-insensitive.",
               ),
             first: z
               .number()
@@ -364,7 +619,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'."
+                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'.",
               ),
             limit: z
               .number()
@@ -381,13 +636,13 @@ Rules:
               .boolean()
               .default(false)
               .describe(
-                "Include draft releases (requires token with access). Default false."
+                "Include draft releases (requires token with access). Default false.",
               ),
             includeBody: z
               .boolean()
               .default(false)
               .describe(
-                "Include release body text. Default false to keep payload small."
+                "Include release body text. Default false to keep payload small.",
               ),
           }),
           execute: async ({
@@ -400,14 +655,14 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
             const url = new URL(
               `https://api.github.com/repos/coder/${encodeURIComponent(
-                repo
-              )}/releases`
+                repo,
+              )}/releases`,
             );
             url.searchParams.set("per_page", String(Math.min(limit, 100)));
 
@@ -429,7 +684,7 @@ Rules:
             }>;
             if (!res.ok) {
               throw new Error(
-                `GitHub releases error: ${res.status} ${res.statusText}`
+                `GitHub releases error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -444,7 +699,7 @@ Rules:
                 prerelease: r.prerelease,
                 publishedAt: r.published_at,
                 url: r.html_url,
-                body: includeBody ? r.body ?? null : undefined,
+                body: includeBody ? (r.body ?? null) : undefined,
               }));
 
             return filtered;
@@ -489,7 +744,7 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
@@ -509,7 +764,7 @@ Rules:
 
             if (!res.ok) {
               throw new Error(
-                `GitHub repos error: ${res.status} ${res.statusText}`
+                `GitHub repos error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -553,7 +808,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in descriptions, case-insensitive."
+                "Keyword(s) to search in descriptions, case-insensitive.",
               ),
             first: z
               .number()
@@ -562,7 +817,7 @@ Rules:
               .max(200)
               .default(100)
               .describe(
-                "How many posts to consider for ranking (most recent first)."
+                "How many posts to consider for ranking (most recent first).",
               ),
           }),
           execute: async ({ q, first }) => {
@@ -623,7 +878,7 @@ Rules:
               }))
               .sort(
                 (a, b) =>
-                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1)
+                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
               );
           },
         }),
@@ -636,7 +891,7 @@ Rules:
               .array(z.string())
               .min(1)
               .describe(
-                "Keywords or topics from recent releases to check coverage for."
+                "Keywords or topics from recent releases to check coverage for.",
               ),
             lookbackDays: z
               .number()
@@ -645,7 +900,7 @@ Rules:
               .max(365)
               .default(90)
               .describe(
-                "How many days back to check for existing coverage. Default 90 days."
+                "How many days back to check for existing coverage. Default 90 days.",
               ),
           }),
           execute: async ({ keywords, lookbackDays }) => {
@@ -742,7 +997,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               gaps.push({
@@ -760,7 +1015,7 @@ Rules:
                 totalKeywords: keywords.length,
                 uncoveredKeywords: gaps.filter((g) => g.hasGap).length,
                 gapPercentage: Math.round(
-                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100
+                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100,
                 ),
               },
             };
@@ -944,11 +1199,11 @@ Rules:
                   name: z.string().nullable(),
                   tag: z.string().nullable(),
                   body: z.string().nullable().optional(),
-                })
+                }),
               )
               .min(1)
               .describe(
-                "Release data from get_github_releases to analyze for topics."
+                "Release data from get_github_releases to analyze for topics.",
               ),
           }),
           execute: async ({ releaseData }) => {
@@ -983,7 +1238,7 @@ Rules:
                     "now",
                     "can",
                     "will",
-                  ].includes(word)
+                  ].includes(word),
               );
               for (const keyword of keywords) {
                 themes.set(keyword, (themes.get(keyword) || 0) + 1);
@@ -1142,7 +1397,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               results.push({
@@ -1168,11 +1423,11 @@ Rules:
               summary: {
                 totalMatches: results.reduce(
                   (sum, r) => sum + r.matchingPosts,
-                  0
+                  0,
                 ),
                 averageMatchesPerKeyword: Math.round(
                   results.reduce((sum, r) => sum + r.matchingPosts, 0) /
-                    keywords.length
+                    keywords.length,
                 ),
               },
             };
