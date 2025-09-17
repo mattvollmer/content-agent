@@ -2,7 +2,7 @@ import { streamText, tool } from "ai";
 import * as blink from "blink";
 import { z } from "zod";
 import { convertToModelMessages } from "ai";
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 import { isIP } from "node:net";
 
@@ -266,23 +266,26 @@ Rules:
             if (html.length > 5 * 1024 * 1024) {
               throw new Error("Page exceeds 5MB limit.");
             }
-            const dom = new JSDOM(html, { url: u.toString() });
-            const doc = dom.window.document;
-            const meta = extractMetadata(doc);
-            const reader = new Readability(doc);
+            const { document: doc } = parseHTML(html);
+            const meta = extractMetadata(doc as unknown as Document);
+            const reader = new Readability(doc as unknown as Document);
             const article = reader.parse();
             const mainText =
               article?.textContent || doc.body?.textContent || "";
 
             // Collect headings and links
             const headings = Array.from(
-              doc.querySelectorAll("h1, h2, h3, h4") as NodeListOf<Element>,
+              (doc as unknown as Document).querySelectorAll(
+                "h1, h2, h3, h4",
+              ) as NodeListOf<Element>,
             ).map((h) => ({
               tag: (h as Element).tagName,
               text: ((h as Element).textContent || "").trim().slice(0, 300),
             }));
             const links = Array.from(
-              doc.querySelectorAll("a[href]") as NodeListOf<Element>,
+              (doc as unknown as Document).querySelectorAll(
+                "a[href]",
+              ) as NodeListOf<Element>,
             )
               .slice(0, 500)
               .map((a) => {
