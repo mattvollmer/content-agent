@@ -45,7 +45,8 @@ export default blink.agent({
 
   async sendMessages({ messages }) {
     return streamText({
-      model: "anthropic/claude-sonnet-4",
+      // model: "anthropic/claude-sonnet-4",
+      model: "openai/gpt-5-mini",
       system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
 
 Rules:
