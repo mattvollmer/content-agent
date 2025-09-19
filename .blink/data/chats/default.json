@@ -1,0 +1,33 @@
+{
+  "id": "default",
+  "created_at": "2025-09-19T16:00:40.195Z",
+  "updated_at": "2025-09-19T16:00:43.720Z",
+  "messages": [
+    {
+      "created_at": "2025-09-19T16:00:43.720Z",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "test"
+        }
+      ],
+      "id": "46109b0a-c05d-4fb7-bc5c-354f80a735a0"
+    },
+    {
+      "created_at": "2025-09-19T16:00:49.357Z",
+      "id": "6be0639e-d0d0-4c89-ba20-625161edce3f",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "text",
+          "text": "Hello! I'm Dato Agent, here to help you work with DatoCMS content, GitHub releases, and content planning. \n\nI can help you with things like:\n- **Content discovery**: Find and analyze blog posts by author, topic, or keywords\n- **Content planning**: Identify gaps between releases and blog coverage\n- **Author expertise**: Understand what topics different authors cover\n- **Release analysis**: Get GitHub release information and suggest content topics\n- **Web browsing**: Fetch content from specific URLs when needed\n\nWhat would you like to explore today? You could ask me to:\n- Show recent blog posts\n- Find posts by a specific author\n- Check what GitHub releases are available\n- Analyze content gaps\n- Or anything else related to content analysis and planning!",
+          "state": "done"
+        }
+      ]
+    }
+  ]
+}

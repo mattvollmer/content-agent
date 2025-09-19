@@ -6,7 +6,7 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "ai": "^5.0.44",
-    "blink": "^0.1.25",
+    "blink": "^0.1.32",
     "esbuild": "^0.25.9",
     "linkedom": "^0.18.12",
     "zod": "^4.1.8"
