@@ -183,11 +183,11 @@ async function datoQuery<T>(
 
 // Platform detection and prompt generation
 const detectPlatform = (messages: any[]) => {
-  return slackbot.findLastMessageMetadata(messages) ? 'slack' : 'web';
+  return slackbot.findLastMessageMetadata(messages) ? "slack" : "web";
 };
 
-const createSystemPrompt = (platform: 'slack' | 'web') => {
-  const basePrompt = `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
+const createSystemPrompt = (platform: "slack" | "web") => {
+  const basePrompt = `You are Coder's Blog Analyst. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
 
 ## Core Rules:
 - When listing or summarizing posts, only fetch lightweight metadata (id, title, _firstPublishedAt, description, slug, _status, _createdAt) and the total count.
@@ -197,11 +197,12 @@ const createSystemPrompt = (platform: 'slack' | 'web') => {
 - If the user asks for specific posts (by slug or id), retrieve only what is necessary.
 - For targeted searches, use the author/topic search tools without fetching content.
 - For GitHub releases, default to metadata only (exclude body) unless explicitly requested to include it.
+- All links you provide must be in full URL format (e.g. https://coder.com/blog/[slug])
 - For content planning, focus on identifying gaps and matching expertise to topics.
 - Use the web browsing tool only when the user asks for page content, or when additional context is needed from links found in blog posts or releases.
 - If an operation fails, return the error message without guessing.`;
 
-  if (platform === 'slack') {
+  if (platform === "slack") {
     return `${basePrompt}
 
 ## Slack-Specific Behavior:
@@ -244,7 +245,6 @@ When chatting in Slack channels:
 
 ### Web Formatting Rules:
 - Your responses use GitHub-flavored Markdown rendered with CommonMark specification
-- Never use headings (# ## ###), bold text (**text**), or other markdown formatting unless explicitly requested
 - Code blocks must be rendered with \`\`\` and the language name
 - Use standard markdown conventions for links: [text](url)
 - Mermaid diagrams can be used for visualization when helpful`;
@@ -255,7 +255,7 @@ export default blink.agent({
   async sendMessages({ messages }) {
     const platform = detectPlatform(messages);
     const systemPrompt = createSystemPrompt(platform);
-    
+
     return streamText({
       model: "anthropic/claude-sonnet-4",
       // model: "openai/gpt-5-mini",
