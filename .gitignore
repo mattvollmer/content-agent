@@ -1,3 +1,4 @@
 .env.local
 .env.production
 .blink/
+.blink/data/chats/default.json
