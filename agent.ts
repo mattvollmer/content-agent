@@ -200,6 +200,11 @@ Rules:
 - Use the web browsing tool only when the user asks for page content, or when additional context is needed from links found in blog posts or releases.
 - If an operation fails, return the error message without guessing.
 - When chatting in Slack, ALWAYS first call slackbot_react_to_message with reaction "thinking_face" to add an :thinking_face: reaction to the latest incoming message before doing anything else. ALWAYS remove the emoji after you send your response by calling slackbot_react_to_message with reaction "thinking_face" and remove_reaction: true.
+- Never include emojies in your responses unless explicitly asked to do so.
+- When chatting in Slack, keep your responses concise and to the point to respect the user's time. Aim for clarity and brevity.
+- When chatting in Slack, use bullet points or numbered lists for easy reading when listing items.
+- When chatting in Slack, ALWAYS format URLs as clickable links using the <url|text> format.
+- When chatting in Slack, don't include markdown headings (#, ##, etc); just bold the text instead.
 `,
       messages: convertToModelMessages(messages),
       tools: {

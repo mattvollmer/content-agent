@@ -1,7 +1,7 @@
 {
   "id": "default",
   "created_at": "2025-09-19T16:00:40.195Z",
-  "updated_at": "2025-09-19T16:00:43.720Z",
+  "updated_at": "2025-09-21T14:15:08.621Z",
   "messages": [
     {
       "created_at": "2025-09-19T16:00:43.720Z",
@@ -26,6 +26,272 @@
           "type": "text",
           "text": "Hello! I'm Dato Agent, here to help you work with DatoCMS content, GitHub releases, and content planning. \n\nI can help you with things like:\n- **Content discovery**: Find and analyze blog posts by author, topic, or keywords\n- **Content planning**: Identify gaps between releases and blog coverage\n- **Author expertise**: Understand what topics different authors cover\n- **Release analysis**: Get GitHub release information and suggest content topics\n- **Web browsing**: Fetch content from specific URLs when needed\n\nWhat would you like to explore today? You could ask me to:\n- Show recent blog posts\n- Find posts by a specific author\n- Check what GitHub releases are available\n- Analyze content gaps\n- Or anything else related to content analysis and planning!",
           "state": "done"
+        }
+      ]
+    },
+    {
+      "created_at": "2025-09-21T14:15:03.013Z",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "whats new?"
+        }
+      ],
+      "id": "fb277d42-dc7a-40bc-8f1a-fb5c60380304"
+    },
+    {
+      "created_at": "2025-09-21T14:15:05.551Z",
+      "id": "3e0db320-480a-49f4-bb8e-35f8580519f3",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "text",
+          "text": "Let me check what's new in both blog posts and GitHub releases for you!",
+          "state": "done"
+        },
+        {
+          "type": "tool-get_blogs_overview",
+          "toolCallId": "toolu_01DvbVwzNJckxbdR7AS48eea",
+          "state": "output-available",
+          "input": {
+            "first": 10,
+            "includeAuthors": true
+          },
+          "output": {
+            "_allBlogsMeta": {
+              "count": 261
+            },
+            "allBlogs": [
+              {
+                "id": "enLPuTjQTuSaX0NSqUoCKQ",
+                "title": "Why Cloud Development Environments Are Critical for Autonomous Driving Pioneers",
+                "_firstPublishedAt": "2025-09-08T10:39:12-05:00",
+                "description": "Autonomous vehicle companies are using Coder to accelerate hardware-in-the-loop (HIL) simulations and test track engineering. These teams run real-time, embedded system development inside the vehicles themselves, often on remote test tracks where the car is the server.",
+                "slug": "why-cloud-development-environments-are-critical-for-autonomous-driving-pioneers",
+                "_status": "published",
+                "_createdAt": "2025-09-08T10:18:18-05:00",
+                "authors": [
+                  {
+                    "name": "Eric Paulsen"
+                  }
+                ]
+              },
+              {
+                "id": "HsqWQXV2Qc6vQ1zlKuTECg",
+                "title": "Coder Brings Governance to Kiro IDE with Centralized MCP",
+                "_firstPublishedAt": null,
+                "description": "With Coder’s Kiro integration, configure MCP servers directly into template code, adding organization-specific context — no login delays, no workflow disruptions.",
+                "slug": "centralized-mcp-server-management-kiro",
+                "_status": "draft",
+                "_createdAt": "2025-09-07T23:56:55-05:00",
+                "authors": [
+                  {
+                    "name": "Suman Bisht"
+                  }
+                ]
+              },
+              {
+                "id": "JjjqZGNYRD-uvWvBZg4VCQ",
+                "title": "Auggie CLI Agent Now Available in Coder Tasks",
+                "_firstPublishedAt": "2025-08-29T13:50:42-05:00",
+                "description": "The Auggie CLI agent from Augment Code is now officially supported and ready for use in Coder Tasks. This integration lets you run Auggie directly inside your Coder workspace, so you can automate common tasks like dependency updates, code scaffolding, or environment setup without leaving your IDE or moving code out of your secure environment.",
+                "slug": "auggie-cli-agent-now-available-in-coder-tasks",
+                "_status": "updated",
+                "_createdAt": "2025-08-29T11:44:04-05:00",
+                "authors": [
+                  {
+                    "name": "M Atif Ali"
+                  }
+                ]
+              },
+              {
+                "id": "JHtaDt4WTMS6FHA3q4liTg",
+                "title": "Coder Delivers Fast, Consistent MCP Tooling for Cursor",
+                "_firstPublishedAt": "2025-08-20T06:00:01-05:00",
+                "description": "Enterprises are racing to adopt AI. Cursor IDE is most effective with Model Context Protocol (MCP). With Coder, you can pre-configure MCP in workspace templates so devs get a golden path from day one—while IT keeps control with IaC.",
+                "slug": "ship-fast-and-consistent-mcp-tooling-for-cursor",
+                "_status": "published",
+                "_createdAt": "2025-08-17T19:17:43-05:00",
+                "authors": [
+                  {
+                    "name": "M Atif Ali"
+                  }
+                ]
+              },
+              {
+                "id": "Mhu0cbJTShSukJKw0luyqw",
+                "title": "Inside AI Adoption: Lessons from Enterprise Software Development Teams",
+                "_firstPublishedAt": "2025-08-19T06:00:01-05:00",
+                "description": "AI tools are reshaping how enterprise development teams work, but success requires more than just deploying the latest assistants. Drawing from our work with Fortune 500 companies and other enterprise customers, we've identified key lessons around what works when adopting AI in enterprise software development.",
+                "slug": "inside-ai-adoption-lessons-from-enterprise-software-development-teams",
+                "_status": "published",
+                "_createdAt": "2025-08-15T11:20:16-05:00",
+                "authors": [
+                  {
+                    "name": "Ben Potter"
+                  }
+                ]
+              },
+              {
+                "id": "P8sAGl_hSkGX5wCawfl3bg",
+                "title": "Rethink Everything: Why Windows 11 Is a Strategic Gift",
+                "_firstPublishedAt": "2025-08-14T17:45:13-05:00",
+                "description": "Microsoft's Windows 11 hardware requirements aren't just breaking budgets — they're creating the perfect opportunity to rethink your entire development strategy. While most teams scramble to buy compliant laptops, forward-thinking leaders are asking a different question: What if this forced migration is actually permission to go cloud-native?",
+                "slug": "why-windows-11-is-a-strategic-gift",
+                "_status": "published",
+                "_createdAt": "2025-08-11T16:33:42-05:00",
+                "authors": [
+                  {
+                    "name": "Luke Brand"
+                  }
+                ]
+              },
+              {
+                "id": "d13WCMgrRHSu2DgBrvPO8A",
+                "title": "Query-Mutating Data Race in Go: Hiding in Plain Sight",
+                "_firstPublishedAt": "2025-08-07T16:21:20-05:00",
+                "description": "Coder’s engineering team has discovered a serious security vulnerability in the Go standard libary `database/sql` package. As of writing there are no known exploits against any applications, but we recommend updating to Go version 1.24.6 immediately and upgrading all Coder deployments to a patched release.",
+                "slug": "query-mutating-data-race-in-go",
+                "_status": "published",
+                "_createdAt": "2025-08-07T10:00:37-05:00",
+                "authors": [
+                  {
+                    "name": "Spike Curtis"
+                  }
+                ]
+              },
+              {
+                "id": "U_I-WQffQG2Nl-VkZSyDnQ",
+                "title": "How AI Agents Are Redefining Developer Workflows at Anthropic",
+                "_firstPublishedAt": "2025-08-01T14:14:36-05:00",
+                "description": "On July 30th, we hosted a fireside chat with leaders from Anthropic's product and developer experience team who is building Claude Code to explore how AI coding agents are reshaping development workflows. Here are the highlights.",
+                "slug": "inside-anthropics-ai-first-development",
+                "_status": "published",
+                "_createdAt": "2025-08-01T14:05:49-05:00",
+                "authors": [
+                  {
+                    "name": "Ben Potter"
+                  }
+                ]
+              },
+              {
+                "id": "MrM0p3C5R_i5iSvw68tV8Q",
+                "title": "Is the IDE Dead? The Rise of Agentic AI in Software Development",
+                "_firstPublishedAt": "2025-07-16T14:10:15-05:00",
+                "description": "The IDE will not be the center of the developer universe. AI-powered editors like Cursor and Windsurf are a stop on the AI tour, not the destination. The future is chatting with an agent.",
+                "slug": "is-the-ide-dead-the-rise-of-agentic-ai-in-software-development",
+                "_status": "published",
+                "_createdAt": "2025-07-16T13:27:34-05:00",
+                "authors": [
+                  {
+                    "name": "Rob Whiteley"
+                  }
+                ]
+              },
+              {
+                "id": "VFMJbktvSLuZ28kmengkpQ",
+                "title": "Day 5: Composable by Design – What will you build? + Launch Week Recap",
+                "_firstPublishedAt": "2025-07-11T05:43:08-05:00",
+                "description": "The Coder Registry is a growing marketplace for secure, enterprise-ready modules — built to share, remix, and accelerate innovation across teams.",
+                "slug": "launch-week-2025-composable-by-design",
+                "_status": "published",
+                "_createdAt": "2025-07-10T17:31:16-05:00",
+                "authors": [
+                  {
+                    "name": "Coder Team "
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "created_at": "2025-09-21T14:15:08.599Z",
+      "id": "d3f4015b-7ea7-4a86-88d3-d7d177df5ac7",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "tool-list_accessible_repos",
+          "toolCallId": "toolu_01U6iiXYhYffMJ7erKmbckUg",
+          "state": "output-available",
+          "input": {
+            "type": "all",
+            "sort": "updated",
+            "direction": "desc",
+            "includeArchived": false,
+            "limit": 5
+          },
+          "output": [
+            {
+              "name": "blink.so",
+              "fullName": "coder/blink.so",
+              "private": true,
+              "archived": false,
+              "fork": false,
+              "description": "The web app for Blink.",
+              "language": "TypeScript",
+              "stars": 8,
+              "updatedAt": "2025-09-21T14:07:17Z",
+              "url": "https://github.com/coder/blink.so"
+            },
+            {
+              "name": "httpjail",
+              "fullName": "coder/httpjail",
+              "private": false,
+              "archived": false,
+              "fork": false,
+              "description": "HTTP(s) request filter for processes",
+              "language": "Rust",
+              "stars": 425,
+              "updatedAt": "2025-09-21T14:00:12Z",
+              "url": "https://github.com/coder/httpjail"
+            },
+            {
+              "name": "code-server",
+              "fullName": "coder/code-server",
+              "private": false,
+              "archived": false,
+              "fork": false,
+              "description": "VS Code in the browser",
+              "language": "TypeScript",
+              "stars": 73940,
+              "updatedAt": "2025-09-21T13:43:54Z",
+              "url": "https://github.com/coder/code-server"
+            },
+            {
+              "name": "coder",
+              "fullName": "coder/coder",
+              "private": false,
+              "archived": false,
+              "fork": false,
+              "description": "Secure environments for developers and their agents",
+              "language": "Go",
+              "stars": 11015,
+              "updatedAt": "2025-09-21T13:31:54Z",
+              "url": "https://github.com/coder/coder"
+            },
+            {
+              "name": "websocket",
+              "fullName": "coder/websocket",
+              "private": false,
+              "archived": false,
+              "fork": false,
+              "description": "Minimal and idiomatic WebSocket library for Go",
+              "language": "Go",
+              "stars": 4620,
+              "updatedAt": "2025-09-21T11:40:52Z",
+              "url": "https://github.com/coder/websocket"
+            }
+          ]
         }
       ]
     }
