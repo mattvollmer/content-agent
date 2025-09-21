@@ -5,6 +5,7 @@ import { convertToModelMessages } from "ai";
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 import { isIP } from "node:net";
+import * as slackbot from "@blink-sdk/slackbot";
 
 const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
 
@@ -45,7 +46,7 @@ async function fetchRobotsAllowed(target: URL, userAgent = "content-agent") {
   try {
     const robotsUrl = new URL(
       "/robots.txt",
-      `${target.protocol}//${target.host}`
+      `${target.protocol}//${target.host}`,
     );
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 10_000);
@@ -147,12 +148,12 @@ function relevantPassages(text: string, question: string, max = 10) {
 
 async function datoQuery<T>(
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
 ) {
   const token = process.env.DATOCMS_API_TOKEN;
   if (!token) {
     throw new Error(
-      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key."
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
     );
   }
 
@@ -201,6 +202,9 @@ Rules:
 `,
       messages: convertToModelMessages(messages),
       tools: {
+        ...slackbot.tools({
+          messages,
+        }),
         browse_url: tool({
           description:
             "Fetch and analyze a public web page (HTML-only). Respects robots.txt, blocks private addresses, 10s timeout, 5MB max. Use when the user asks for page content or when following links in releases/blog posts.",
@@ -210,7 +214,7 @@ Rules:
               .string()
               .optional()
               .describe(
-                "Optional focus question; returns relevant passages from the page content."
+                "Optional focus question; returns relevant passages from the page content.",
               ),
             cache: z
               .boolean()
@@ -274,16 +278,16 @@ Rules:
             // Collect headings and links
             const headings = Array.from(
               (doc as unknown as Document).querySelectorAll(
-                "h1, h2, h3, h4"
-              ) as NodeListOf<Element>
+                "h1, h2, h3, h4",
+              ) as NodeListOf<Element>,
             ).map((h) => ({
               tag: (h as Element).tagName,
               text: ((h as Element).textContent || "").trim().slice(0, 300),
             }));
             const links = Array.from(
               (doc as unknown as Document).querySelectorAll(
-                "a[href]"
-              ) as NodeListOf<Element>
+                "a[href]",
+              ) as NodeListOf<Element>,
             )
               .slice(0, 500)
               .map((a) => {
@@ -329,13 +333,13 @@ Rules:
               .max(100)
               .default(50)
               .describe(
-                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small."
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
               ),
             includeAuthors: z
               .boolean()
               .default(false)
               .describe(
-                "Include authors { name } to show who wrote each post. Defaults to false."
+                "Include authors { name } to show who wrote each post. Defaults to false.",
               ),
           }),
           execute: async ({ first, includeAuthors }) => {
@@ -467,7 +471,7 @@ Rules:
             `;
 
             const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
-              query
+              query,
             );
             return data._allBlogsMeta.count;
           },
@@ -559,7 +563,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in description, case-insensitive."
+                "Keyword(s) to search in description, case-insensitive.",
               ),
             first: z
               .number()
@@ -620,7 +624,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'."
+                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'.",
               ),
             limit: z
               .number()
@@ -637,13 +641,13 @@ Rules:
               .boolean()
               .default(false)
               .describe(
-                "Include draft releases (requires token with access). Default false."
+                "Include draft releases (requires token with access). Default false.",
               ),
             includeBody: z
               .boolean()
               .default(false)
               .describe(
-                "Include release body text. Default false to keep payload small."
+                "Include release body text. Default false to keep payload small.",
               ),
           }),
           execute: async ({
@@ -656,14 +660,14 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
             const url = new URL(
               `https://api.github.com/repos/coder/${encodeURIComponent(
-                repo
-              )}/releases`
+                repo,
+              )}/releases`,
             );
             url.searchParams.set("per_page", String(Math.min(limit, 100)));
 
@@ -685,7 +689,7 @@ Rules:
             }>;
             if (!res.ok) {
               throw new Error(
-                `GitHub releases error: ${res.status} ${res.statusText}`
+                `GitHub releases error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -700,7 +704,7 @@ Rules:
                 prerelease: r.prerelease,
                 publishedAt: r.published_at,
                 url: r.html_url,
-                body: includeBody ? r.body ?? null : undefined,
+                body: includeBody ? (r.body ?? null) : undefined,
               }));
 
             return filtered;
@@ -745,7 +749,7 @@ Rules:
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
               );
             }
 
@@ -765,7 +769,7 @@ Rules:
 
             if (!res.ok) {
               throw new Error(
-                `GitHub repos error: ${res.status} ${res.statusText}`
+                `GitHub repos error: ${res.status} ${res.statusText}`,
               );
             }
 
@@ -809,7 +813,7 @@ Rules:
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in descriptions, case-insensitive."
+                "Keyword(s) to search in descriptions, case-insensitive.",
               ),
             first: z
               .number()
@@ -818,7 +822,7 @@ Rules:
               .max(200)
               .default(100)
               .describe(
-                "How many posts to consider for ranking (most recent first)."
+                "How many posts to consider for ranking (most recent first).",
               ),
           }),
           execute: async ({ q, first }) => {
@@ -879,7 +883,7 @@ Rules:
               }))
               .sort(
                 (a, b) =>
-                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1)
+                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
               );
           },
         }),
@@ -892,7 +896,7 @@ Rules:
               .array(z.string())
               .min(1)
               .describe(
-                "Keywords or topics from recent releases to check coverage for."
+                "Keywords or topics from recent releases to check coverage for.",
               ),
             lookbackDays: z
               .number()
@@ -901,7 +905,7 @@ Rules:
               .max(365)
               .default(90)
               .describe(
-                "How many days back to check for existing coverage. Default 90 days."
+                "How many days back to check for existing coverage. Default 90 days.",
               ),
           }),
           execute: async ({ keywords, lookbackDays }) => {
@@ -998,7 +1002,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               gaps.push({
@@ -1016,7 +1020,7 @@ Rules:
                 totalKeywords: keywords.length,
                 uncoveredKeywords: gaps.filter((g) => g.hasGap).length,
                 gapPercentage: Math.round(
-                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100
+                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100,
                 ),
               },
             };
@@ -1200,11 +1204,11 @@ Rules:
                   name: z.string().nullable(),
                   tag: z.string().nullable(),
                   body: z.string().nullable().optional(),
-                })
+                }),
               )
               .min(1)
               .describe(
-                "Release data from get_github_releases to analyze for topics."
+                "Release data from get_github_releases to analyze for topics.",
               ),
           }),
           execute: async ({ releaseData }) => {
@@ -1239,7 +1243,7 @@ Rules:
                     "now",
                     "can",
                     "will",
-                  ].includes(word)
+                  ].includes(word),
               );
               for (const keyword of keywords) {
                 themes.set(keyword, (themes.get(keyword) || 0) + 1);
@@ -1398,7 +1402,7 @@ Rules:
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1
+                a._createdAt < b._createdAt ? 1 : -1,
               );
 
               results.push({
@@ -1424,17 +1428,45 @@ Rules:
               summary: {
                 totalMatches: results.reduce(
                   (sum, r) => sum + r.matchingPosts,
-                  0
+                  0,
                 ),
                 averageMatchesPerKeyword: Math.round(
                   results.reduce((sum, r) => sum + r.matchingPosts, 0) /
-                    keywords.length
+                    keywords.length,
                 ),
               },
             };
           },
         }),
+        slack_send_channel_message: tool({
+          description: "Send a message to the current channel.",
+          inputSchema: z.object({
+            message: z.string(),
+          }),
+          execute: async ({ message }) => {
+            const metadata = await slackbot.findLastMessageMetadata(messages);
+            if (!metadata) {
+              throw new Error("This chat isn't from Slack!");
+            }
+            const api = await slackbot.createClient(metadata);
+            await api.chat.postMessage({
+              channel: metadata.channel,
+              text: message,
+            });
+            return {
+              content: "Message sent to channel",
+            };
+          },
+        }),
       },
     });
+  },
+  async webhook(request) {
+    if (slackbot.isOAuthRequest(request)) {
+      return slackbot.handleOAuthRequest(request);
+    }
+    if (slackbot.isWebhook(request)) {
+      return slackbot.handleWebhook(request);
+    }
   },
 });
