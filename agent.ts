@@ -1438,26 +1438,6 @@ Rules:
             };
           },
         }),
-        slack_send_channel_message: tool({
-          description: "Send a message to the current channel.",
-          inputSchema: z.object({
-            message: z.string(),
-          }),
-          execute: async ({ message }) => {
-            const metadata = await slackbot.findLastMessageMetadata(messages);
-            if (!metadata) {
-              throw new Error("This chat isn't from Slack!");
-            }
-            const api = await slackbot.createClient(metadata);
-            await api.chat.postMessage({
-              channel: metadata.channel,
-              text: message,
-            });
-            return {
-              content: "Message sent to channel",
-            };
-          },
-        }),
       },
     });
   },
