@@ -181,12 +181,13 @@ async function datoQuery<T>(
   return json.data as T;
 }
 
-export default blink.agent({
-  async sendMessages({ messages }) {
-    return streamText({
-      model: "anthropic/claude-sonnet-4",
-      // model: "openai/gpt-5-mini",
-      system: `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
+// Platform detection and prompt generation
+const detectPlatform = (messages: any[]) => {
+  return slackbot.findLastMessageMetadata(messages) ? 'slack' : 'web';
+};
+
+const createSystemPrompt = (platform: 'slack' | 'web') => {
+  const basePrompt = `You are Dato Agent. Your job is to help users understand what content exists in DatoCMS today, including draft posts, correlate recent GitHub releases to potential authors, and assist with content planning and gap analysis.
 
 ## Core Rules:
 - When listing or summarizing posts, only fetch lightweight metadata (id, title, _firstPublishedAt, description, slug, _status, _createdAt) and the total count.
@@ -198,7 +199,10 @@ export default blink.agent({
 - For GitHub releases, default to metadata only (exclude body) unless explicitly requested to include it.
 - For content planning, focus on identifying gaps and matching expertise to topics.
 - Use the web browsing tool only when the user asks for page content, or when additional context is needed from links found in blog posts or releases.
-- If an operation fails, return the error message without guessing.
+- If an operation fails, return the error message without guessing.`;
+
+  if (platform === 'slack') {
+    return `${basePrompt}
 
 ## Slack-Specific Behavior:
 When chatting in Slack channels:
@@ -212,12 +216,50 @@ When chatting in Slack channels:
 - Aim for clarity and brevity over comprehensive explanations
 - Use bullet points or numbered lists for easy reading when listing items
 - Never include emojis in responses unless explicitly asked to do so
+- Prefer short responses with maximum 2,900 characters
 
-### Formatting Guidelines:
-- ALWAYS format URLs as clickable links using the <url|text> format
-- Don't include markdown headings (#, ##, etc); use *bold text* instead
-- Use standard Slack formatting conventions
-`,
+### Slack Formatting Rules:
+- *text* = bold (NOT italics like in standard markdown)
+- _text_ = italics  
+- \`text\` = inline code
+- \`\`\` = code blocks (do NOT put a language after the backticks)
+- ~text~ = strikethrough
+- <http://example.com|link text> = links
+- tables must be in a code block
+- user mentions must be in the format <@user_id> (e.g. <@U01UBAM2C4D>)
+
+### Never Use in Slack:
+- Headings (#, ##, ###, etc.)
+- Double asterisks (**text**) - Slack doesn't support this
+- Standard markdown bold/italic conventions`;
+  } else {
+    return `${basePrompt}
+
+## Web Chat Behavior:
+
+### Communication Style:
+- Provide comprehensive explanations when helpful
+- Use structured formatting to organize information clearly
+- Include detailed context when discussing technical topics
+
+### Web Formatting Rules:
+- Your responses use GitHub-flavored Markdown rendered with CommonMark specification
+- Never use headings (# ## ###), bold text (**text**), or other markdown formatting unless explicitly requested
+- Code blocks must be rendered with \`\`\` and the language name
+- Use standard markdown conventions for links: [text](url)
+- Mermaid diagrams can be used for visualization when helpful`;
+  }
+};
+
+export default blink.agent({
+  async sendMessages({ messages }) {
+    const platform = detectPlatform(messages);
+    const systemPrompt = createSystemPrompt(platform);
+    
+    return streamText({
+      model: "anthropic/claude-sonnet-4",
+      // model: "openai/gpt-5-mini",
+      system: systemPrompt,
       messages: convertToModelMessages(messages),
       tools: {
         ...slackbot.tools({
