@@ -272,26 +272,24 @@ async function runGa4ReportByLocation(opts: {
     limit: 100000,
   });
 
+  type SeriesRow = { date: string } & Record<string, number>;
   const rows = resp.rows || [];
-  const series = rows.map((r) => {
+  const series: SeriesRow[] = rows.map((r) => {
     const date = yyyymmddToIso(r.dimensionValues?.[0]?.value || "");
-    const obj: Record<string, number | string> = { date };
+    const metricsObj: Record<string, number> = {};
     r.metricValues?.forEach((mv, i) => {
-      obj[metrics[i].name] = Number(mv.value || 0);
+      metricsObj[metrics[i].name] = Number(mv.value || 0);
     });
-    return obj;
+    return { date, ...metricsObj } as SeriesRow;
   });
 
-  const totals = series.reduce(
-    (acc, day) => {
-      for (const k of Object.keys(day)) {
-        if (k === "date") continue;
-        acc[k] = (acc[k] || 0) + Number(day[k] || 0);
-      }
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
+  const totals = series.reduce<Record<string, number>>((acc, day) => {
+    for (const [k, v] of Object.entries(day)) {
+      if (k === "date") continue;
+      acc[k] = (acc[k] ?? 0) + v;
+    }
+    return acc;
+  }, {});
 
   return {
     pageLocation: opts.pageLocation,
