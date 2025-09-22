@@ -47,7 +47,7 @@ async function fetchRobotsAllowed(target: URL, userAgent = "content-agent") {
   try {
     const robotsUrl = new URL(
       "/robots.txt",
-      `${target.protocol}//${target.host}`,
+      `${target.protocol}//${target.host}`
     );
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 10_000);
@@ -149,12 +149,12 @@ function relevantPassages(text: string, question: string, max = 10) {
 
 async function datoQuery<T>(
   query: string,
-  variables?: Record<string, unknown>,
+  variables?: Record<string, unknown>
 ) {
   const token = process.env.DATOCMS_API_TOKEN;
   if (!token) {
     throw new Error(
-      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key.",
+      "Missing DATOCMS_API_TOKEN environment variable. Please export your DatoCMS API key."
     );
   }
 
@@ -216,7 +216,7 @@ function resolveAbsoluteUrl(input: {
   const origin = process.env.SITE_ORIGIN;
   if (!origin) {
     throw new Error(
-      "Missing SITE_ORIGIN environment variable. Provide full url, or set SITE_ORIGIN to construct pageLocation from path/slug.",
+      "Missing SITE_ORIGIN environment variable. Provide full url, or set SITE_ORIGIN to construct pageLocation from path/slug."
     );
   }
   if (input.path) {
@@ -226,7 +226,7 @@ function resolveAbsoluteUrl(input: {
   if (input.slug) {
     const prefix = (process.env.BLOG_PATH_PREFIX || "/blog/").replace(
       /\/$/,
-      "",
+      ""
     );
     const s = input.slug.startsWith("/") ? input.slug.slice(1) : input.slug;
     return `${origin.replace(/\/$/, "")}${prefix}/${s}`;
@@ -395,7 +395,7 @@ export default blink.agent({
               .string()
               .optional()
               .describe(
-                "Optional focus question; returns relevant passages from the page content.",
+                "Optional focus question; returns relevant passages from the page content."
               ),
             cache: z
               .boolean()
@@ -459,16 +459,16 @@ export default blink.agent({
             // Collect headings and links
             const headings = Array.from(
               (doc as unknown as Document).querySelectorAll(
-                "h1, h2, h3, h4",
-              ) as NodeListOf<Element>,
+                "h1, h2, h3, h4"
+              ) as NodeListOf<Element>
             ).map((h) => ({
               tag: (h as Element).tagName,
               text: ((h as Element).textContent || "").trim().slice(0, 300),
             }));
             const links = Array.from(
               (doc as unknown as Document).querySelectorAll(
-                "a[href]",
-              ) as NodeListOf<Element>,
+                "a[href]"
+              ) as NodeListOf<Element>
             )
               .slice(0, 500)
               .map((a) => {
@@ -526,7 +526,7 @@ export default blink.agent({
                     "screenPageViews",
                     "activeUsers",
                     "sessions",
-                  ] as const),
+                  ] as const)
                 )
                 .optional(),
             })
@@ -553,19 +553,19 @@ export default blink.agent({
               const now = new Date();
               const end = toYMD(now);
               const start = toYMD(
-                new Date(now.getTime() - (lastNDays - 1) * 86400000),
+                new Date(now.getTime() - (lastNDays - 1) * 86400000)
               );
               s = start;
               e = end;
             }
             if (!s || !e) {
               throw new Error(
-                "Invalid date range. Check lastNDays or start/end dates.",
+                "Invalid date range. Check lastNDays or start/end dates."
               );
             }
 
             const safeMetrics = (metrics || DEFAULT_GA_METRICS).filter((m) =>
-              ALLOWED_GA_METRICS.has(m),
+              ALLOWED_GA_METRICS.has(m)
             ) as AllowedMetric[];
             return runGa4ReportByLocation({
               pageLocation,
@@ -585,7 +585,7 @@ export default blink.agent({
             days: z.number().int().min(1).max(365).default(30),
             metrics: z
               .array(
-                z.enum(["screenPageViews", "activeUsers", "sessions"] as const),
+                z.enum(["screenPageViews", "activeUsers", "sessions"] as const)
               )
               .optional(),
           }),
@@ -603,7 +603,7 @@ export default blink.agent({
             const publishedAt = data.allBlogs?.[0]?._firstPublishedAt;
             if (!publishedAt) {
               throw new Error(
-                "Could not resolve first published date for slug.",
+                "Could not resolve first published date for slug."
               );
             }
 
@@ -611,7 +611,7 @@ export default blink.agent({
             const end = new Date(start.getTime() + (days - 1) * 86400000);
             const pageLocation = resolveAbsoluteUrl({ slug });
             const safeMetrics = (metrics || DEFAULT_GA_METRICS).filter((m) =>
-              ALLOWED_GA_METRICS.has(m),
+              ALLOWED_GA_METRICS.has(m)
             ) as AllowedMetric[];
             return runGa4ReportByLocation({
               pageLocation,
@@ -633,13 +633,13 @@ export default blink.agent({
               .max(100)
               .default(50)
               .describe(
-                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small.",
+                "Maximum number of posts to fetch, defaults to 50. This is metadata-only to keep responses small."
               ),
             includeAuthors: z
               .boolean()
               .default(false)
               .describe(
-                "Include authors { name } to show who wrote each post. Defaults to false.",
+                "Include authors { name } to show who wrote each post. Defaults to false."
               ),
           }),
           execute: async ({ first, includeAuthors }) => {
@@ -771,7 +771,7 @@ export default blink.agent({
             `;
 
             const data = await datoQuery<{ _allBlogsMeta: { count: number } }>(
-              query,
+              query
             );
             return data._allBlogsMeta.count;
           },
@@ -863,7 +863,7 @@ export default blink.agent({
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in description, case-insensitive.",
+                "Keyword(s) to search in description, case-insensitive."
               ),
             first: z
               .number()
@@ -924,7 +924,7 @@ export default blink.agent({
               .string()
               .min(1)
               .describe(
-                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'.",
+                "Repository name within the coder org, e.g. 'coder' or 'vscode-coder'."
               ),
             limit: z
               .number()
@@ -941,13 +941,13 @@ export default blink.agent({
               .boolean()
               .default(false)
               .describe(
-                "Include draft releases (requires token with access). Default false.",
+                "Include draft releases (requires token with access). Default false."
               ),
             includeBody: z
               .boolean()
               .default(false)
               .describe(
-                "Include release body text. Default false to keep payload small.",
+                "Include release body text. Default false to keep payload small."
               ),
           }),
           execute: async ({
@@ -960,14 +960,14 @@ export default blink.agent({
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
               );
             }
 
             const url = new URL(
               `https://api.github.com/repos/coder/${encodeURIComponent(
-                repo,
-              )}/releases`,
+                repo
+              )}/releases`
             );
             url.searchParams.set("per_page", String(Math.min(limit, 100)));
 
@@ -989,7 +989,7 @@ export default blink.agent({
             }>;
             if (!res.ok) {
               throw new Error(
-                `GitHub releases error: ${res.status} ${res.statusText}`,
+                `GitHub releases error: ${res.status} ${res.statusText}`
               );
             }
 
@@ -1004,7 +1004,7 @@ export default blink.agent({
                 prerelease: r.prerelease,
                 publishedAt: r.published_at,
                 url: r.html_url,
-                body: includeBody ? (r.body ?? null) : undefined,
+                body: includeBody ? r.body ?? null : undefined,
               }));
 
             return filtered;
@@ -1049,7 +1049,7 @@ export default blink.agent({
             const token = process.env.GITHUB_TOKEN;
             if (!token) {
               throw new Error(
-                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token.",
+                "Missing GITHUB_TOKEN environment variable. Please export a GitHub token."
               );
             }
 
@@ -1069,7 +1069,7 @@ export default blink.agent({
 
             if (!res.ok) {
               throw new Error(
-                `GitHub repos error: ${res.status} ${res.statusText}`,
+                `GitHub repos error: ${res.status} ${res.statusText}`
               );
             }
 
@@ -1113,7 +1113,7 @@ export default blink.agent({
               .string()
               .min(1)
               .describe(
-                "Keyword(s) to search in descriptions, case-insensitive.",
+                "Keyword(s) to search in descriptions, case-insensitive."
               ),
             first: z
               .number()
@@ -1122,7 +1122,7 @@ export default blink.agent({
               .max(200)
               .default(100)
               .describe(
-                "How many posts to consider for ranking (most recent first).",
+                "How many posts to consider for ranking (most recent first)."
               ),
           }),
           execute: async ({ q, first }) => {
@@ -1183,7 +1183,7 @@ export default blink.agent({
               }))
               .sort(
                 (a, b) =>
-                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1),
+                  b.count - a.count || (b.latestAt > a.latestAt ? 1 : -1)
               );
           },
         }),
@@ -1196,7 +1196,7 @@ export default blink.agent({
               .array(z.string())
               .min(1)
               .describe(
-                "Keywords or topics from recent releases to check coverage for.",
+                "Keywords or topics from recent releases to check coverage for."
               ),
             lookbackDays: z
               .number()
@@ -1205,7 +1205,7 @@ export default blink.agent({
               .max(365)
               .default(90)
               .describe(
-                "How many days back to check for existing coverage. Default 90 days.",
+                "How many days back to check for existing coverage. Default 90 days."
               ),
           }),
           execute: async ({ keywords, lookbackDays }) => {
@@ -1302,7 +1302,7 @@ export default blink.agent({
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1,
+                a._createdAt < b._createdAt ? 1 : -1
               );
 
               gaps.push({
@@ -1320,7 +1320,7 @@ export default blink.agent({
                 totalKeywords: keywords.length,
                 uncoveredKeywords: gaps.filter((g) => g.hasGap).length,
                 gapPercentage: Math.round(
-                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100,
+                  (gaps.filter((g) => g.hasGap).length / keywords.length) * 100
                 ),
               },
             };
@@ -1504,11 +1504,11 @@ export default blink.agent({
                   name: z.string().nullable(),
                   tag: z.string().nullable(),
                   body: z.string().nullable().optional(),
-                }),
+                })
               )
               .min(1)
               .describe(
-                "Release data from get_github_releases to analyze for topics.",
+                "Release data from get_github_releases to analyze for topics."
               ),
           }),
           execute: async ({ releaseData }) => {
@@ -1543,7 +1543,7 @@ export default blink.agent({
                     "now",
                     "can",
                     "will",
-                  ].includes(word),
+                  ].includes(word)
               );
               for (const keyword of keywords) {
                 themes.set(keyword, (themes.get(keyword) || 0) + 1);
@@ -1702,7 +1702,7 @@ export default blink.agent({
                 byId.set(p.id, p);
               }
               const merged = Array.from(byId.values()).sort((a, b) =>
-                a._createdAt < b._createdAt ? 1 : -1,
+                a._createdAt < b._createdAt ? 1 : -1
               );
 
               results.push({
@@ -1728,11 +1728,11 @@ export default blink.agent({
               summary: {
                 totalMatches: results.reduce(
                   (sum, r) => sum + r.matchingPosts,
-                  0,
+                  0
                 ),
                 averageMatchesPerKeyword: Math.round(
                   results.reduce((sum, r) => sum + r.matchingPosts, 0) /
-                    keywords.length,
+                    keywords.length
                 ),
               },
             };
