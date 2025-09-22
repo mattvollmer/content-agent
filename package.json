@@ -6,11 +6,10 @@
   "dependencies": {
     "@blink-sdk/slackbot": "^0.0.5",
     "@google-analytics/data": "^5.2.0",
-    "@mozilla/readability": "^0.6.0",
     "ai": "^5.0.44",
     "blink": "^0.1.32",
     "esbuild": "^0.25.9",
-    "linkedom": "^0.18.12",
+    "node-html-parser": "^6.1.13",
     "zod": "^4.1.8"
   },
   "devDependencies": {

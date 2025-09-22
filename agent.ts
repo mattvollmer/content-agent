@@ -2,8 +2,7 @@ import { streamText, tool } from "ai";
 import * as blink from "blink";
 import { z } from "zod";
 import { convertToModelMessages } from "ai";
-import { parseHTML } from "linkedom";
-import { Readability } from "@mozilla/readability";
+import { parse as parseHTMLLight } from "node-html-parser";
 import { isIP } from "node:net";
 import * as slackbot from "@blink-sdk/slackbot";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
@@ -104,19 +103,20 @@ async function fetchRobotsAllowed(target: URL, userAgent = "content-agent") {
   }
 }
 
-function extractMetadata(doc: Document) {
+function extractLightMetadata(root: any) {
+  const getAttr = (sel: string, attr: string) =>
+    root.querySelector(sel)?.getAttribute(attr) ?? null;
   const getMeta = (name: string) =>
-    doc.querySelector(`meta[name="${name}"]`)?.getAttribute("content") ||
-    doc.querySelector(`meta[property="${name}"]`)?.getAttribute("content") ||
-    null;
+    getAttr(`meta[name="${name}"]`, "content") ??
+    getAttr(`meta[property="${name}"]`, "content");
   const title =
-    doc.querySelector("meta[property='og:title']")?.getAttribute("content") ||
-    doc.querySelector("title")?.textContent ||
+    getAttr(`meta[property='og:title']`, "content") ??
+    root.querySelector("title")?.textContent ??
     null;
   const description =
-    getMeta("description") || getMeta("og:description") || null;
+    getMeta("description") ?? getMeta("og:description") ?? null;
   const publishedAt = getMeta("article:published_time");
-  const author = getMeta("author") || getMeta("article:author");
+  const author = getMeta("author") ?? getMeta("article:author");
   return { title, description, publishedAt, author };
 }
 
@@ -449,33 +449,29 @@ export default blink.agent({
             if (html.length > 5 * 1024 * 1024) {
               throw new Error("Page exceeds 5MB limit.");
             }
-            const { document: doc } = parseHTML(html);
-            const meta = extractMetadata(doc as unknown as Document);
-            const reader = new Readability(doc as unknown as Document);
-            const article = reader.parse();
-            const mainText =
-              article?.textContent || doc.body?.textContent || "";
+            const root = parseHTMLLight(html, {
+              lowerCaseTagName: false,
+              comment: false,
+              blockTextElements: { script: false, style: false, pre: true },
+            });
+            const meta = extractLightMetadata(root);
+            const mainText = (root.text || "").trim();
 
             // Collect headings and links
-            const headings = Array.from(
-              (doc as unknown as Document).querySelectorAll(
-                "h1, h2, h3, h4"
-              ) as NodeListOf<Element>
-            ).map((h) => ({
-              tag: (h as Element).tagName,
-              text: ((h as Element).textContent || "").trim().slice(0, 300),
-            }));
-            const links = Array.from(
-              (doc as unknown as Document).querySelectorAll(
-                "a[href]"
-              ) as NodeListOf<Element>
-            )
+            const headings = root
+              .querySelectorAll("h1,h2,h3,h4")
+              .slice(0, 200)
+              .map((h: any) => ({
+                tag: h.tagName,
+                text: (h.textContent || "").trim().slice(0, 300),
+              }));
+            const links = root
+              .querySelectorAll("a[href]")
               .slice(0, 500)
-              .map((a) => {
-                const el = a as Element;
-                const href = (el.getAttribute("href") || "").trim();
-                const rel = (el.getAttribute("rel") || "").toLowerCase();
-                const text = (el.textContent || "").trim().replace(/\s+/g, " ");
+              .map((a: any) => {
+                const href = (a.getAttribute("href") || "").trim();
+                const rel = (a.getAttribute("rel") || "").toLowerCase();
+                const text = (a.textContent || "").trim().replace(/\s+/g, " ");
                 return {
                   href: new URL(href, u).toString(),
                   text: text.slice(0, 200),
@@ -1427,7 +1423,6 @@ export default blink.agent({
               "at",
               "to",
               "for",
-              "of",
               "with",
               "by",
               "is",
