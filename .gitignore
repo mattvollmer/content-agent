@@ -2,3 +2,5 @@
 .env.production
 .blink/
 .blink/data/chats/default.json
+.config
+gatest.ts

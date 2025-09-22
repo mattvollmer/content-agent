@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "@blink-sdk/slackbot": "^0.0.5",
+    "@google-analytics/data": "^5.2.0",
     "@mozilla/readability": "^0.6.0",
     "ai": "^5.0.44",
     "blink": "^0.1.32",
