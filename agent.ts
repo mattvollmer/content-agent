@@ -2,10 +2,10 @@ import { streamText, tool } from "ai";
 import * as blink from "blink";
 import { z } from "zod";
 import { convertToModelMessages } from "ai";
-import { parseHTML } from "linkedom";
-import { Readability } from "@mozilla/readability";
+import { parse as parseHTMLLight } from "node-html-parser";
 import { isIP } from "node:net";
 import * as slackbot from "@blink-sdk/slackbot";
+import jwt from "jsonwebtoken";
 
 const DATOCMS_ENDPOINT = "https://graphql.datocms.com/";
 
@@ -103,19 +103,20 @@ async function fetchRobotsAllowed(target: URL, userAgent = "content-agent") {
   }
 }
 
-function extractMetadata(doc: Document) {
+function extractLightMetadata(root: any) {
+  const getAttr = (sel: string, attr: string) =>
+    root.querySelector(sel)?.getAttribute(attr) ?? null;
   const getMeta = (name: string) =>
-    doc.querySelector(`meta[name="${name}"]`)?.getAttribute("content") ||
-    doc.querySelector(`meta[property="${name}"]`)?.getAttribute("content") ||
-    null;
+    getAttr(`meta[name="${name}"]`, "content") ??
+    getAttr(`meta[property="${name}"]`, "content");
   const title =
-    doc.querySelector("meta[property='og:title']")?.getAttribute("content") ||
-    doc.querySelector("title")?.textContent ||
+    getAttr(`meta[property='og:title']`, "content") ??
+    root.querySelector("title")?.textContent ??
     null;
   const description =
-    getMeta("description") || getMeta("og:description") || null;
+    getMeta("description") ?? getMeta("og:description") ?? null;
   const publishedAt = getMeta("article:published_time");
-  const author = getMeta("author") || getMeta("article:author");
+  const author = getMeta("author") ?? getMeta("article:author");
   return { title, description, publishedAt, author };
 }
 
@@ -179,6 +180,200 @@ async function datoQuery<T>(
   }
 
   return json.data as T;
+}
+
+// GA4 helpers
+let gaAccessToken: { token: string; expires: number } | null = null;
+async function getGAAccessToken(): Promise<string> {
+  if (gaAccessToken && Date.now() < gaAccessToken.expires) {
+    return gaAccessToken.token;
+  }
+
+  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || "{}");
+  if (!credentials.client_email || !credentials.private_key) {
+    throw new Error(
+      "Missing GOOGLE_CREDENTIALS_JSON with client_email and private_key"
+    );
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: credentials.client_email,
+    scope: "https://www.googleapis.com/auth/analytics.readonly",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now,
+  };
+
+  const privateKey = credentials.private_key.replace(/\\n/g, "\n");
+  // DEBUG: Log the private key format
+  console.log(
+    "Raw private_key from JSON:",
+    credentials.private_key.substring(0, 50) + "..."
+  );
+  console.log(
+    "Processed private_key starts with:",
+    privateKey.substring(0, 30)
+  );
+  console.log("Private key includes newlines:", privateKey.includes("\n"));
+  console.log("Private key length:", privateKey.length);
+
+  const token = jwt.sign(payload, privateKey, {
+    algorithm: "RS256",
+  });
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: token,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OAuth error (${response.status}): ${errorText}`);
+  }
+
+  const { access_token, expires_in } = await response.json();
+
+  gaAccessToken = {
+    token: access_token,
+    expires: Date.now() + (expires_in - 300) * 1000,
+  };
+
+  return access_token;
+}
+
+function yyyymmddToIso(d: string) {
+  return d && d.length === 8
+    ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`
+    : d;
+}
+
+function toYMD(date: Date) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function resolveAbsoluteUrl(input: {
+  url?: string;
+  path?: string;
+  slug?: string;
+}) {
+  if (input.url) return input.url;
+  const origin = process.env.SITE_ORIGIN;
+  if (!origin) {
+    throw new Error(
+      "Missing SITE_ORIGIN environment variable. Provide full url, or set SITE_ORIGIN to construct pageLocation from path/slug."
+    );
+  }
+  if (input.path) {
+    const p = input.path.startsWith("/") ? input.path : `/${input.path}`;
+    return `${origin.replace(/\/$/, "")}${p}`;
+  }
+  if (input.slug) {
+    const prefix = (process.env.BLOG_PATH_PREFIX || "/blog/").replace(
+      /\/$/,
+      ""
+    );
+    const s = input.slug.startsWith("/") ? input.slug.slice(1) : input.slug;
+    return `${origin.replace(/\/$/, "")}${prefix}/${s}`;
+  }
+  throw new Error("Provide one of url, path, or slug");
+}
+
+const DEFAULT_GA_METRICS = [
+  "screenPageViews",
+  "activeUsers",
+  "sessions",
+] as const;
+const ALLOWED_GA_METRICS = new Set(DEFAULT_GA_METRICS);
+
+type AllowedMetric = (typeof DEFAULT_GA_METRICS)[number];
+
+type SeriesRow = { date: string } & Record<string, number>;
+
+async function runGa4ReportByLocation(opts: {
+  pageLocation: string;
+  startDate: string;
+  endDate: string;
+  metrics?: AllowedMetric[];
+}) {
+  const propertyId = process.env.GA4_PROPERTY_ID;
+  if (!propertyId) {
+    throw new Error("Missing GA4_PROPERTY_ID environment variable.");
+  }
+
+  const metrics = (
+    opts.metrics && opts.metrics.length ? opts.metrics : DEFAULT_GA_METRICS
+  ).map((name) => ({ name }));
+
+  // Get access token and make API call
+  const accessToken = await getGAAccessToken();
+
+  const requestBody = {
+    dateRanges: [{ startDate: opts.startDate, endDate: opts.endDate }],
+    dimensions: [{ name: "date" }, { name: "pageLocation" }],
+    dimensionFilter: {
+      filter: {
+        fieldName: "pageLocation",
+        stringFilter: { matchType: "EXACT", value: opts.pageLocation },
+      },
+    },
+    metrics,
+    limit: 100000,
+  };
+
+  const response = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GA4 API Error (${response.status}): ${errorText}`);
+  }
+
+  const resp = await response.json();
+  const rows = resp.rows || [];
+
+  const series: SeriesRow[] = rows.map((r: any) => {
+    const date = yyyymmddToIso(r.dimensionValues?.[0]?.value || "");
+    const metricsObj: Record<string, number> = {};
+    r.metricValues?.forEach((mv: any, i: number) => {
+      metricsObj[metrics[i].name] = Number(mv.value || 0);
+    });
+    return { date, ...metricsObj } as SeriesRow;
+  });
+
+  const totals = series.reduce<Record<string, number>>((acc, day) => {
+    for (const [k, v] of Object.entries(day)) {
+      if (k === "date") continue;
+      if (typeof v === "number") {
+        acc[k] = (acc[k] ?? 0) + v;
+      }
+    }
+    return acc;
+  }, {});
+
+  return {
+    pageLocation: opts.pageLocation,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    totals,
+    series,
+  };
 }
 
 // Platform detection and prompt generation
@@ -328,33 +523,29 @@ export default blink.agent({
             if (html.length > 5 * 1024 * 1024) {
               throw new Error("Page exceeds 5MB limit.");
             }
-            const { document: doc } = parseHTML(html);
-            const meta = extractMetadata(doc as unknown as Document);
-            const reader = new Readability(doc as unknown as Document);
-            const article = reader.parse();
-            const mainText =
-              article?.textContent || doc.body?.textContent || "";
+            const root = parseHTMLLight(html, {
+              lowerCaseTagName: false,
+              comment: false,
+              blockTextElements: { script: false, style: false, pre: true },
+            });
+            const meta = extractLightMetadata(root);
+            const mainText = (root.text || "").trim();
 
             // Collect headings and links
-            const headings = Array.from(
-              (doc as unknown as Document).querySelectorAll(
-                "h1, h2, h3, h4"
-              ) as NodeListOf<Element>
-            ).map((h) => ({
-              tag: (h as Element).tagName,
-              text: ((h as Element).textContent || "").trim().slice(0, 300),
-            }));
-            const links = Array.from(
-              (doc as unknown as Document).querySelectorAll(
-                "a[href]"
-              ) as NodeListOf<Element>
-            )
+            const headings = root
+              .querySelectorAll("h1,h2,h3,h4")
+              .slice(0, 200)
+              .map((h: any) => ({
+                tag: h.tagName,
+                text: (h.textContent || "").trim().slice(0, 300),
+              }));
+            const links = root
+              .querySelectorAll("a[href]")
               .slice(0, 500)
-              .map((a) => {
-                const el = a as Element;
-                const href = (el.getAttribute("href") || "").trim();
-                const rel = (el.getAttribute("rel") || "").toLowerCase();
-                const text = (el.textContent || "").trim().replace(/\s+/g, " ");
+              .map((a: any) => {
+                const href = (a.getAttribute("href") || "").trim();
+                const rel = (a.getAttribute("rel") || "").toLowerCase();
+                const text = (a.textContent || "").trim().replace(/\s+/g, " ");
                 return {
                   href: new URL(href, u).toString(),
                   text: text.slice(0, 200),
@@ -379,6 +570,125 @@ export default blink.agent({
 
             if (cache) pageCache.set(key, { at: now, data: result });
             return result;
+          },
+        }),
+        // New: GA4 metrics by pageLocation for any page
+        get_ga_metrics: tool({
+          description:
+            "Get GA4 metrics for any page via pageLocation. Provide url, or path/slug (requires SITE_ORIGIN). Returns totals and daily series.",
+          inputSchema: z
+            .object({
+              url: z.string().url().optional(),
+              path: z.string().optional(),
+              slug: z.string().optional(),
+              lastNDays: z.number().int().min(1).max(365).optional(),
+              startDate: z
+                .string()
+                .regex(/^\d{4}-\d{2}-\d{2}$/)
+                .optional(),
+              endDate: z
+                .string()
+                .regex(/^\d{4}-\d{2}-\d{2}$/)
+                .optional(),
+              metrics: z
+                .array(
+                  z.enum([
+                    "screenPageViews",
+                    "activeUsers",
+                    "sessions",
+                  ] as const)
+                )
+                .optional(),
+            })
+            .refine((v) => v.url || v.path || v.slug, {
+              message: "Provide one of url, path, or slug.",
+            })
+            .refine((v) => Boolean(v.lastNDays) || (v.startDate && v.endDate), {
+              message: "Provide lastNDays or startDate+endDate.",
+            }),
+          execute: async ({
+            url,
+            path,
+            slug,
+            lastNDays,
+            startDate,
+            endDate,
+            metrics,
+          }) => {
+            const pageLocation = resolveAbsoluteUrl({ url, path, slug });
+
+            let s = startDate;
+            let e = endDate;
+            if (lastNDays) {
+              const now = new Date();
+              const end = toYMD(now);
+              const start = toYMD(
+                new Date(now.getTime() - (lastNDays - 1) * 86400000)
+              );
+              s = start;
+              e = end;
+            }
+            if (!s || !e) {
+              throw new Error(
+                "Invalid date range. Check lastNDays or start/end dates."
+              );
+            }
+
+            const safeMetrics = (metrics || DEFAULT_GA_METRICS).filter((m) =>
+              ALLOWED_GA_METRICS.has(m)
+            ) as AllowedMetric[];
+            return runGa4ReportByLocation({
+              pageLocation,
+              startDate: s,
+              endDate: e,
+              metrics: safeMetrics,
+            });
+          },
+        }),
+
+        // New: GA4 metrics for N days after a blog post's first publish date (uses DatoCMS)
+        get_ga_post_views_after_launch: tool({
+          description:
+            "Given a blog slug and a day window (default 30), fetch GA4 metrics for N days after the post’s first publish date (pageLocation).",
+          inputSchema: z.object({
+            slug: z.string(),
+            days: z.number().int().min(1).max(365).default(30),
+            metrics: z
+              .array(
+                z.enum(["screenPageViews", "activeUsers", "sessions"] as const)
+              )
+              .optional(),
+          }),
+          execute: async ({ slug, days, metrics }) => {
+            const query = /* GraphQL */ `
+              query BlogFirstPublished($slug: String!) {
+                allBlogs(first: 1, filter: { slug: { eq: $slug } }) {
+                  _firstPublishedAt
+                }
+              }
+            `;
+            const data = await datoQuery<{
+              allBlogs: Array<{ _firstPublishedAt: string | null }>;
+            }>(query, { slug });
+            const publishedAt = data.allBlogs?.[0]?._firstPublishedAt;
+            if (!publishedAt) {
+              throw new Error(
+                "Could not resolve first published date for slug."
+              );
+            }
+
+            const start = new Date(publishedAt);
+            const end = new Date(start.getTime() + (days - 1) * 86400000);
+            const pageLocation = resolveAbsoluteUrl({ slug });
+            const safeMetrics = (metrics || DEFAULT_GA_METRICS).filter((m) =>
+              ALLOWED_GA_METRICS.has(m)
+            ) as AllowedMetric[];
+            return runGa4ReportByLocation({
+              pageLocation,
+              startDate: toYMD(start),
+              endDate: toYMD(end),
+              metrics: safeMetrics,
+            });
           },
         }),
 
@@ -1187,7 +1497,6 @@ export default blink.agent({
               "at",
               "to",
               "for",
-              "of",
               "with",
               "by",
               "is",
