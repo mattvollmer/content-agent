@@ -286,7 +286,9 @@ async function runGa4ReportByLocation(opts: {
   const totals = series.reduce<Record<string, number>>((acc, day) => {
     for (const [k, v] of Object.entries(day)) {
       if (k === "date") continue;
-      acc[k] = (acc[k] ?? 0) + v;
+      if (typeof v === "number") {
+        acc[k] = (acc[k] ?? 0) + v;
+      }
     }
     return acc;
   }, {});
