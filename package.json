@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@blink-sdk/slackbot": "^0.0.5",
+    "@blink-sdk/slackbot": "^0.0.7",
     "ai": "^5.0.44",
     "blink": "^0.1.32",
     "esbuild": "^0.25.9",
@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^24.5.0"
+    "@types/node": "^24.5.0",
+    "@blink-sdk/model-intent": "^0.0.3"
   }
 }
