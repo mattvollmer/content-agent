@@ -1,49 +1,48 @@
 # Content Agent
 
-A powerful content management and web analysis agent that provides comprehensive tools for content operations, web scraping, and analytics integration.
+A content management and web analysis agent that integrates with DatoCMS, Google Analytics, and provides web scraping capabilities.
+
+## Tools
+
+- `dato_query_content` - Execute GraphQL queries against DatoCMS (includes drafts)
+- `dato_list_models` - List all content models in DatoCMS
+- `dato_search_content` - Search content across models with text matching
+- `fetch_web_page` - Fetch and extract content from web pages with robots.txt compliance
+- `analyze_web_content` - Extract relevant passages from web content based on queries
+- `ga4_get_metrics` - Retrieve Google Analytics 4 data for content performance
+- `ga4_get_popular_content` - Get top-performing content from GA4
+- `current_date` - Get current date and time information
 
 ## Core Capabilities
 
 ### Content Management
-- **DatoCMS Integration**: Full GraphQL API access for content queries, supporting both published and draft content
-- **Content Analytics**: Google Analytics 4 (GA4) integration for performance metrics and insights
-- **Content Discovery**: Advanced content querying with flexible filtering and search capabilities
+- DatoCMS GraphQL API integration with support for published and draft content
+- Content model introspection and search across multiple content types
+- Google Analytics 4 integration for content performance metrics
 
-### Web Intelligence
-- **Smart Web Scraping**: Respectful web content extraction with robots.txt compliance checking
-- **Content Analysis**: Intelligent text extraction and metadata parsing from web pages
-- **Relevance Matching**: Advanced passage extraction based on query relevance using tokenization
-- **Safety Features**: Built-in protection against private/internal networks and hostile environments
+### Web Content Operations
+- Web page content extraction with automatic robots.txt checking
+- Metadata parsing (Open Graph, article data, page titles)
+- Text analysis and relevant passage extraction
+- Private network protection (blocks localhost, internal IPs)
 
 ### Platform Integration
-- **Slack Support**: Native Slack integration with threaded conversations and emoji reactions
-- **Multi-Platform**: Optimized experience for both Slack and web interfaces
-- **Caching System**: Intelligent in-memory caching with TTL for improved performance
-
-## Key Features
-
-- **Robots.txt Compliance**: Automatically checks and respects robots.txt files before scraping
-- **Private Network Protection**: Prevents access to localhost, internal IPs, and private networks
-- **Metadata Extraction**: Comprehensive parsing of Open Graph, article metadata, and page structure
-- **Flexible Content Queries**: Support for complex DatoCMS GraphQL queries with variables
-- **Analytics Integration**: JWT-based Google Analytics authentication with automatic token refresh
-- **Content Summarization**: Smart text analysis and passage extraction for relevant information
+- Native Slack integration with emoji reactions and threading
+- Multi-platform support (Slack and web interfaces)
+- In-memory caching with TTL for improved performance
 
 ## Use Cases
 
-- Content strategy planning and analysis
-- Competitive research and market intelligence
+- Content strategy and performance analysis
+- Competitive research and content discovery
 - SEO content optimization
-- Multi-platform content distribution
-- Performance tracking and analytics
-- Automated content discovery and curation
+- Multi-platform content distribution planning
+- Automated content curation
 
-## Technical Stack
+## Technical Details
 
-- **Runtime**: Blink AI Agent Framework
-- **APIs**: DatoCMS GraphQL, Google Analytics 4, Web APIs
-- **Authentication**: JWT with service account credentials
-- **Parsing**: HTML parsing with metadata extraction
-- **Caching**: In-memory TTL-based caching system
-
-This agent combines content management, web intelligence, and analytics to provide a comprehensive solution for modern content operations.
+- **Authentication**: JWT with Google service account credentials for GA4
+- **Content Processing**: HTML parsing with metadata extraction
+- **Safety**: Robots.txt compliance checking and private network blocking
+- **Caching**: TTL-based in-memory cache (10 minutes default)
+- **Rate Limiting**: Respectful web scraping with timeout controls
