@@ -6,7 +6,7 @@
   "dependencies": {
     "@blink-sdk/slackbot": "^0.0.7",
     "ai": "^5.0.44",
-    "blink": "^0.1.32",
+    "blink": "^0.1.41",
     "esbuild": "^0.25.9",
     "jsonwebtoken": "^9.0.2",
     "node-html-parser": "^6.1.13",
