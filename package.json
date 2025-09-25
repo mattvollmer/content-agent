@@ -4,17 +4,17 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@blink-sdk/slackbot": "^0.0.7",
-    "ai": "^5.0.44",
-    "blink": "^0.1.41",
-    "esbuild": "^0.25.9",
+    "@blink-sdk/slackbot": "^0.0.9",
+    "ai": "^5.0.52",
+    "blink": "^0.1.50",
+    "esbuild": "^0.25.10",
     "jsonwebtoken": "^9.0.2",
     "node-html-parser": "^6.1.13",
-    "zod": "^4.1.8"
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^24.5.0",
+    "@types/node": "^24.5.2",
     "@blink-sdk/model-intent": "^0.0.3"
   }
 }

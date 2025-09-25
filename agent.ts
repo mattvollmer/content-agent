@@ -1878,7 +1878,7 @@ export default blink.agent({
       ),
     });
   },
-  async webhook(request) {
+  async onRequest(request) {
     if (slackbot.isOAuthRequest(request)) {
       return slackbot.handleOAuthRequest(request);
     }
